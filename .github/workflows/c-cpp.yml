@@ -1,0 +1,94 @@
+name: XOR
+
+on:
+  push:
+    paths-ignore:
+      - "**/*.md"
+      - '**/*.txt'
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - '**/*.txt'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.event_name  }}
+  cancel-in-progress: true
+
+jobs:
+  payload-build:
+    runs-on: ubuntu-latest
+    steps:
+    
+    - name: Get Latest SDK Release Info
+      id: sdk-release
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const release = await github.rest.repos.getLatestRelease({
+            owner: 'ps5-payload-dev',
+            repo: 'sdk'
+          });
+          core.setOutput('download_url', release.data.assets.find(asset => asset.name.endsWith('.zip')).browser_download_url);
+
+    - name: Download Latest SDK
+      run: |
+        curl -L "${{ steps.sdk-release.outputs.download_url }}" -o ps5-sdk.zip
+        mkdir -p ${{ runner.tool_cache }}/ps5-payload-sdk
+        unzip ps5-sdk.zip -d ${{ runner.tool_cache }}/ps5-payload-sdk
+        echo PS5_PAYLOAD_SDK=${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk >> $GITHUB_ENV
+        chmod 0755 -R ${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk 
+
+    - name: Checkout Payload
+      uses: actions/checkout@v3
+
+    - name: Build SDK-Binaries
+      run: bash ./build.sh
+      env:
+        CFLAGS: "-O2 -DNDEBUG"
+        CXXFLAGS: "-O2 -DNDEBUG"
+
+    - name: Build libhijacker
+      run: |
+        python3 - << 'PYEOF'
+        import os
+        path = "libhijacker/CMakeLists.txt"
+        sdk = os.environ["PS5_PAYLOAD_SDK"]
+        with open(path, "r") as f:
+            content = f.read()
+        content = content.replace(
+            'set(CMAKE_C_FLAGS "--target=x86_64-sie-ps5',
+            'set(CMAKE_C_FLAGS "-isystem ' + sdk + '/target/include -isystem /usr/include/c++/13 -isystem /usr/include/x86_64-linux-gnu/c++/13 -isystem /usr/include -isystem /usr/include/x86_64-linux-gnu --target=x86_64-sie-ps5',
+            1
+        )
+        content = content.replace('-Werror -fno-exceptions', '-Wno-error -Wno-format -fno-exceptions', 1)
+        with open(path, "w") as f:
+            f.write(content)
+        print("Patched OK")
+        PYEOF
+
+        mkdir -p libhijacker/build
+        cmake -S libhijacker -B libhijacker/build \
+          -DCMAKE_C_COMPILER=clang \
+          -DCMAKE_CXX_COMPILER=clang++ \
+          -DCMAKE_ASM_COMPILER=clang \
+          -DCMAKE_C_COMPILER_WORKS=1 \
+          -DCMAKE_CXX_COMPILER_WORKS=1 \
+          -DCMAKE_ASM_COMPILER_WORKS=1 \
+          -DPS5_PAYLOAD_SDK=${{ env.PS5_PAYLOAD_SDK }} \
+          -DV_FW=0x0000
+        cmake --build libhijacker/build
+        mkdir -p libhijacker_out
+        cp libhijacker/build/libhijacker.a libhijacker_out/
+        cd libhijacker_out && zip ../libhijacker.zip libhijacker.a
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@main
+      with:
+        name: SDK-Binaries
+        path:  |
+              ELF_samples/bin/*.elf
+              Plugin_samples/bin/*.elf
+              Plugin_samples/bin/*.plugin
+              libhijacker.zip
