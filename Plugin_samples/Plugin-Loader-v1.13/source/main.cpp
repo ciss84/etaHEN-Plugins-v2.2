@@ -51,7 +51,6 @@ extern "C" {
 void sig_handler(int signo)
 {
     printf_notification("Plugin Loader crashed: signal %d    ", signo);
-    printBacktraceForCrash();
     exit(-1);
 }
 
