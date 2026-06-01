@@ -383,7 +383,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 sceKernelResumeProcess(pid);
                 
                 // Attends que le PRX se charge
-                sleep(10);
+                sleep(3);
 
                 // Diagnostic: lire loaded + last_lsm_result depuis GameStuff
                 if (stuff_addr != 0) {
