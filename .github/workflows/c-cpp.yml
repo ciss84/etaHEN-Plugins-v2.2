@@ -49,11 +49,15 @@ jobs:
         CFLAGS: "-O2 -DNDEBUG"
         CXXFLAGS: "-O2 -DNDEBUG"
 
-    - name: Package libhijacker
+    - name: Package libs
       run: |
-        mkdir -p libhijacker_out
-        cp lib/libhijacker.a libhijacker_out/
-        cd libhijacker_out && zip ../libhijacker.zip libhijacker.a
+        mkdir -p libs_out
+        cp lib/libhijacker.a      libs_out/
+        cp lib/libNidResolver.a   libs_out/
+        cp lib/libNineS.a         libs_out/
+        cp lib/libelfldr.a        libs_out/
+        cp lib/libSelfDecryptor.a libs_out/
+        cd libs_out && zip ../libs.zip *.a
 
     - name: Upload artifacts
       uses: actions/upload-artifact@main
@@ -63,4 +67,4 @@ jobs:
               ELF_samples/bin/*.elf
               Plugin_samples/bin/*.elf
               Plugin_samples/bin/*.plugin
-              libhijacker.zip
+              libs.zip
