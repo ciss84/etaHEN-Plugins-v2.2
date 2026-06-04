@@ -317,6 +317,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
+    // Jailbreak le process cible apres suspend pour que
+    // sceKernelLoadStartModule puisse acceder aux paths hors sandbox.
+    plugin_log("[PLT] Jailbreaking pid %d...", pid);
+    hijacker->jailbreak(/*escapeSandbox=*/ true);
+    plugin_log("[PLT] Jailbreak done");
+
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
@@ -363,12 +369,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     int success_count = 0;
 
     if (hijacker) {
-        // Jailbreak le process cible apres suspend pour que
-        // sceKernelLoadStartModule puisse acceder aux paths hors sandbox.
-        plugin_log("[PLT] Jailbreaking pid %d...", pid);
-        hijacker->jailbreak(/*escapeSandbox=*/ true);
-        plugin_log("[PLT] Jailbreak done");
-        
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
