@@ -14,4 +14,3 @@ class ScopedSuspender {
 		ScopedSuspender &operator=(ScopedSuspender&&) = delete;
 		~ScopedSuspender() { hijacker->resume(); }
 };
-void do_jailbreak() const;
