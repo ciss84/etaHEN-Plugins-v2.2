@@ -2,7 +2,7 @@
 
 #include "hijacker/hijacker.hpp" // IWYU pragma: export
 #include "hijacker/spawner.hpp" // IWYU pragma: export
-void do_jailbreak() const;
+
 class ScopedSuspender {
 	Hijacker *hijacker;
 
