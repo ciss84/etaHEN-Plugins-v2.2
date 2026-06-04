@@ -53,7 +53,7 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 
 // NOLINTBEGIN
 
-void Hijacker::jailbreak() const {
+void Hijacker::do_jailbreak() const {
 	jailbreak(/*escapeSandbox=*/ true);
 }
 
