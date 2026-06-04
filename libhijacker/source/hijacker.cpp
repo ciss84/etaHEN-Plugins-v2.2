@@ -19,8 +19,6 @@ int klog_printf(const char *fmt, ...);
 int sceNotificationSend(int userId, bool isLogged, const char *payload);
 }
 
-extern "C" uint64_t kernel_base = 0;
-
 #define LOG(fmt, ...) klog_printf("[lapy_jb] " fmt "\n", ##__VA_ARGS__)
 #define SANDBOX_BASE     "/mnt/sandbox"
 #define JB_FILE_RELPATH  "/download0/etahen_jailbreak"
