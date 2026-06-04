@@ -366,15 +366,15 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        usleep(500000);
+
         // Jailbreak le process cible avant injection pour que
         // sceKernelLoadStartModule puisse acceder aux paths hors sandbox.
         plugin_log("[PLT] Jailbreaking pid %d...", pid);
         hijacker->jailbreak(/*escapeSandbox=*/ true);
         plugin_log("[PLT] Jailbreak done");
-
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        usleep(500000);
 
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
