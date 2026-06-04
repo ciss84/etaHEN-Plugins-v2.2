@@ -72,7 +72,7 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 	return td->getFrame();
 }
 
-void Hijacker::jailbreak1(bool escapeSandbox) const {
+void Hijacker::jailbreak(bool escapeSandbox) const {
     auto proc = getProc();
     if (!proc) return;
 
