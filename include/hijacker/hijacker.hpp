@@ -14,7 +14,7 @@ class Hijacker {
 #ifndef LIBKERNEL_HANDLE
 	static constexpr int LIBKERNEL_HANDLE = 0x2001;
 #endif
-void do_jailbreak() const;
+
 	UniquePtr<SharedObject> obj;
 
 	protected:
@@ -120,6 +120,7 @@ void do_jailbreak() const;
 
 		UniquePtr<TrapFrame> getTrapFrame() const;
 		void jailbreak(bool escapeSandbox=true) const;
+		void do_jailbreak() const;
 		uintptr_t getFunctionAddress(const SharedLib *lib, const Nid &fname) const noexcept;
 
 		uintptr_t getLibKernelFunctionAddress(const Nid &fname) const {
