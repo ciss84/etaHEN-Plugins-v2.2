@@ -75,10 +75,6 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 
 // NOLINTBEGIN
 //
-static inline void copyin(uintptr_t kdst, const void *src, size_t length) {
-	kernel_copyin(const_cast<void *>(src), kdst, length);
-}
-
 static void notif(const char *fmt, ...) {
 	char text[256];
 	va_list ap;
