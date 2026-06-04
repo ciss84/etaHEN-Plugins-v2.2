@@ -382,7 +382,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 kernel_copyout(ucred + 0x04, &uid, sizeof(uid));
                 if (uid != 0) {
                     plugin_log("[PLT] pid %d not jailbroken (uid=%d), jailbreaking...", pid, uid);
-                    hijacker->jailbreak(/*escapeSandbox=*/ true);
+                    hijacker->jailbreak(/*escapeSandbox=*/ false);
                     plugin_log("[PLT] Jailbreak done");
                 } else {
                     plugin_log("[PLT] pid %d already jailbroken (uid=0), skip", pid);
