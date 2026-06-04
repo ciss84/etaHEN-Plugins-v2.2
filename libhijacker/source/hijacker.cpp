@@ -19,6 +19,15 @@ UniquePtr<Hijacker> Hijacker::getHijacker(const StringView &processName) {
 	return obj ? new Hijacker(obj.release()) : nullptr;
 }
 
+UniquePtr<Hijacker> Hijacker::getHijacker(pid_t pid) {
+	auto p = ::getProc(pid);
+	if (p == nullptr) {
+		return nullptr;
+	}
+	auto obj = p->getSharedObject();
+	return obj ? new Hijacker(obj.release()) : nullptr;
+}
+
 int Hijacker::getMainThreadId() const {
 	if (mainThreadId == -1) {
 		for (dbg::ThreadInfo info : dbg::getThreads(obj->pid)) {
