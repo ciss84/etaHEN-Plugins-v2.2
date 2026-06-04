@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <string>
 #include <ps5/kernel.h>
+#include <kernel/proc.hpp>
 
 #include <dirent.h>
 #include <stdarg.h>
@@ -370,6 +371,27 @@ static void inject_into_game(pid_t pid, const char *title_id,
         sceKernelSuspendProcess(pid);
         usleep(500000);
 
+        // Jailbreak conditionnel : uniquement si le process n'est pas deja
+        // root (uid != 0). Sur FW 5.50 le payload le fait au boot, sur 8.xx+
+        // le game est encore sandboxe a ce stade.
+        {
+            auto proc = ::getProc(pid);
+            if (proc) {
+                uintptr_t ucred = proc->p_ucred();
+                int uid = -1;
+                kernel_copyout(ucred + 0x04, &uid, sizeof(uid));
+                if (uid != 0) {
+                    plugin_log("[PLT] pid %d not jailbroken (uid=%d), jailbreaking...", pid, uid);
+                    hijacker->jailbreak(/*escapeSandbox=*/ true);
+                    plugin_log("[PLT] Jailbreak done");
+                } else {
+                    plugin_log("[PLT] pid %d already jailbroken (uid=0), skip", pid);
+                }
+            } else {
+                plugin_log("[PLT] getProc(%d) failed, skip jailbreak", pid);
+            }
+        }
+
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
 
@@ -382,15 +404,16 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 sceKernelPrepareToResumeProcess(pid);
                 sceKernelResumeProcess(pid);
                 
-                // Attends que le PRX se charge
-                sleep(3);
-
-                // Diagnostic: lire loaded + last_lsm_result depuis GameStuff
+                // Poll loaded flag jusqu'a 15s max (frame_delay + temps load PRX)
                 if (stuff_addr != 0) {
                     int loaded_flag = 0;
                     int lsm_result  = 0;
-                    hijacker->read(stuff_addr + 0x128, &loaded_flag, sizeof(loaded_flag));
-                    hijacker->read(stuff_addr + 0x12C, &lsm_result,  sizeof(lsm_result));
+                    for (int t = 0; t < 150; t++) {
+                        usleep(100000); // 100ms
+                        hijacker->read(stuff_addr + 0x128, &loaded_flag, sizeof(loaded_flag));
+                        hijacker->read(stuff_addr + 0x12C, &lsm_result,  sizeof(lsm_result));
+                        if (loaded_flag != 0 || lsm_result != 0) break;
+                    }
                     plugin_log("[PLT] loaded=%d | LoadStartModule result=0x%08x", loaded_flag, (uint32_t)lsm_result);
                 }
                 
