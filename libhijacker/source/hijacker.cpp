@@ -19,13 +19,11 @@ UniquePtr<Hijacker> Hijacker::getHijacker(const StringView &processName) {
 	return obj ? new Hijacker(obj.release()) : nullptr;
 }
 
-
 int Hijacker::getMainThreadId() const {
 	if (mainThreadId == -1) {
 		for (dbg::ThreadInfo info : dbg::getThreads(obj->pid)) {
 			StringView name = info.name();
 			if (name.contains("Main") || name.contains(".")) {
-				// this works for most of them
 				mainThreadId = info.tid();
 				break;
 			}
@@ -38,7 +36,6 @@ int Hijacker::getMainThreadId() const {
 }
 
 UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
-	// do not cache this
 	int tid = getMainThreadId();
 	if (tid == -1) [[unlikely]] {
 		return nullptr;
@@ -47,7 +44,6 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 	if (p == nullptr) {
 		return nullptr;
 	}
-
 	auto td = p->getThread(tid);
 	if (td == nullptr) {
 		return nullptr;
@@ -56,12 +52,6 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 }
 
 // NOLINTBEGIN
-//
-static inline void copyin(uintptr_t kdst, const void *src, size_t length) {
-	kernel_copyin(const_cast<void *>(src), kdst, length);
-}
-
-
 
 void Hijacker::do_jailbreak() const {
 	jailbreak(/*escapeSandbox=*/ true);
