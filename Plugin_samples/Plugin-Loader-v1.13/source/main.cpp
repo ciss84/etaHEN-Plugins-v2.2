@@ -367,9 +367,17 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
+        // Attendre que le process soit stable avant de suspendre
+        plugin_log("[PLT] Waiting for process stability before suspend...");
+        usleep(500000);
+        for (int i = 0; i < 10; i++) {
+            if (IsProcessRunning(pid)) break;
+            usleep(100000);
+        }
+
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(500000);
+        usleep(1500000); // 1.5s — laisser le process finir son init avant jailbreak
 
         // Jailbreak conditionnel : uniquement si le process n'est pas deja
         // root (uid != 0). Sur FW 5.50 le payload le fait au boot, sur 8.xx+
