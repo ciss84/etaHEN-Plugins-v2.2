@@ -1,7 +1,6 @@
 #include "hijacker.hpp"
 #include "offsets.hpp"
 #include "util.hpp"
-#include <ps5/kernel.h>
 
 extern "C" {
 #include <stdint.h>
@@ -15,6 +14,8 @@ extern "C" {
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <ps5/payload.h>
+#include <ps5/kernel.h>
+
 int klog_printf(const char *fmt, ...);
 int sceNotificationSend(int userId, bool isLogged, const char *payload);
 }
@@ -69,6 +70,44 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 		return nullptr;
 	}
 	return td->getFrame();
+}
+
+void Hijacker::jailbreak(bool escapeSandbox) const {
+    auto proc = getProc();
+    if (!proc) return;
+
+    uintptr_t ucred = proc->p_ucred();
+    if (!ucred) return;
+
+    // Root uid/gid
+    static constexpr uint32_t ROOT = 0;
+    kernel_copyin(&ROOT, ucred + 0x04, sizeof(ROOT)); // uid
+    kernel_copyin(&ROOT, ucred + 0x08, sizeof(ROOT)); // ruid
+    kernel_copyin(&ROOT, ucred + 0x0c, sizeof(ROOT)); // svuid
+    kernel_copyin(&ROOT, ucred + 0x10, sizeof(ROOT)); // gid
+    kernel_copyin(&ROOT, ucred + 0x14, sizeof(ROOT)); // rgid
+    kernel_copyin(&ROOT, ucred + 0x18, sizeof(ROOT)); // svgid
+
+    // Sony auth / capability flags
+    size_t sceattr_off = offsets::ucred_sceattr();
+    static constexpr uint64_t SCEATTRVAL = 0x4800000000000003ULL;
+    kernel_copyin(&SCEATTRVAL, ucred + sceattr_off, sizeof(SCEATTRVAL));
+
+    // Escape sandbox via root vnode
+    if (escapeSandbox) {
+        uintptr_t fd = proc->p_fd();
+        if (fd) {
+            uintptr_t root_vn = 0;
+            kernel_copyout(
+                (uintptr_t)kernel_base + offsets::root_vnode(),
+                &root_vn, sizeof(root_vn)
+            );
+            if (root_vn) {
+                kernel_copyin(&root_vn, fd + 0x10, sizeof(root_vn)); // fd_jdir
+                kernel_copyin(&root_vn, fd + 0x18, sizeof(root_vn)); // fd_rdir
+            }
+        }
+    }
 }
 
 // NOLINTBEGIN
