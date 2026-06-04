@@ -104,7 +104,7 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 	copyin(ucred + 0x58, &authid_store, 0x8);	 // cr_sceAuthID
 	copyin(ucred + 0x60, &caps_store, 0x8);		 // cr_sceCaps[0]
 	copyin(ucred + 0x68, &caps_store, 0x8);		 // cr_sceCaps[1]
-	copyin(ucred + 0x83, attr_store, 0x1);		 // cr_sceAttr[0]
+	copyin(ucred + offsets::ucred_sceattr(), attr_store, 0x1);  // cr_sceAttr[0] — fw-aware
 }
 
 uintptr_t Hijacker::getFunctionAddress(const SharedLib *lib, const Nid &fname) const noexcept {
