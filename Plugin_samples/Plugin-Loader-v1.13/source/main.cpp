@@ -367,24 +367,42 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
+        // Attendre que le process soit stable avant de suspendre
+        plugin_log("[PLT] Waiting for process stability before suspend...");
+        usleep(500000);
+        for (int i = 0; i < 10; i++) {
+            if (IsProcessRunning(pid)) break;
+            usleep(100000);
+        }
+
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(500000);
+        usleep(1500000); // 1.5s — laisser le process finir son init avant jailbreak
 
-        // Jailbreak — meme logique que lapy_jb_daemon do_jailbreak()
+        // Jailbreak conditionnel : uniquement si le process n'est pas deja
+        // root (uid != 0). Sur FW 5.50 le payload le fait au boot, sur 8.xx+
+        // le game est encore sandboxe a ce stade.
+        // Skip pour les CUSA (PS4 BC) — deja unsandboxed par le layer BC.
         {
-            auto proc = ::getProc(pid);
-            if (proc) {
-                uintptr_t ucred = proc->p_ucred();
-                int uid = -1;
-                kernel_copyout(ucred + 0x04, &uid, sizeof(uid));
-                if (uid == 0) {
-                    plugin_log("[PLT] pid %d already jailbroken (uid=0), skip", pid);
+            bool is_cusa = (strncmp(title_id, "CUSA", 4) == 0);
+            if (!is_cusa) {
+                auto proc = ::getProc(pid);
+                if (proc) {
+                    uintptr_t ucred = proc->p_ucred();
+                    int uid = -1;
+                    kernel_copyout(ucred + 0x04, &uid, sizeof(uid));
+                    if (uid != 0) {
+                        plugin_log("[PLT] pid %d not jailbroken (uid=%d), jailbreaking...", pid, uid);
+                        hijacker->jailbreak(/*escapeSandbox=*/ false);
+                        plugin_log("[PLT] Jailbreak done");
+                    } else {
+                        plugin_log("[PLT] pid %d already jailbroken (uid=0), skip", pid);
+                    }
                 } else {
-                    plugin_log("[PLT] pid %d uid=%d, jailbreaking...", pid, uid);
-                    hijacker->jailbreak(/*escapeSandbox=*/ true);
-                    plugin_log("[PLT] jailbreak done");
+                    plugin_log("[PLT] getProc(%d) failed, skip jailbreak", pid);
                 }
+            } else {
+                plugin_log("[PLT] CUSA title, skip jailbreak (BC layer handles it)");
             }
         }
 
@@ -462,7 +480,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.13.8 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.13.7 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -496,7 +514,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Plugin Loader v1.13.8: started     \nBy @84Ciss ");
+    printf_notification("Plugin Loader v1.13.7: started     \nBy @84Ciss ");
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
