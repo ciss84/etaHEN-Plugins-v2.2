@@ -14,7 +14,6 @@ class Hijacker {
 #ifndef LIBKERNEL_HANDLE
 	static constexpr int LIBKERNEL_HANDLE = 0x2001;
 #endif
-void do_jailbreak() const;
 
 	UniquePtr<SharedObject> obj;
 
