@@ -57,7 +57,7 @@ void Hijacker::do_jailbreak(pid_t target_pid) const {
     auto hj = Hijacker::getHijacker(target_pid);
     if (!hj) {
         //LOG("getHijacker(%d) FAIL — process likely exited", target_pid);
-        return -1;
+        return;
     }
     hj->jailbreak(/*escapeSandbox=*/ true);
     //LOG("jailbreak OK pid=%d", target_pid);
