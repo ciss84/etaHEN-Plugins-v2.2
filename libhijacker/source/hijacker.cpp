@@ -15,6 +15,7 @@ extern "C" {
 #include <sys/types.h>
 #include <ps5/payload.h>
 #include <ps5/kernel.h>
+#include <notify.hpp>
 
 int klog_printf(const char *fmt, ...);
 int sceNotificationSend(int userId, bool isLogged, const char *payload);
@@ -113,38 +114,14 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 // NOLINTBEGIN
 //
 static void notif(const char *fmt, ...) {
-	char text[256];
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(text, sizeof(text), fmt, ap);
-	va_end(ap);
-	char json[1024];
-	snprintf(json, sizeof(json),
-		"{\"rawData\":{"
-		"\"viewTemplateType\":\"InteractiveToastTemplateB\","
-		"\"channelType\":\"Downloads\","
-		"\"useCaseId\":\"IDC\","
-		"\"toastOverwriteType\":\"Yes\","
-		"\"isImmediate\":true,"
-		"\"priority\":100,"
-		"\"viewData\":{"
-		"\"icon\":{\"type\":\"Predefined\",\"parameters\":{\"icon\":\"download\"}},"
-		"\"message\":{\"body\":\"%s\"},"
-		"\"subMessage\":{\"body\":\"Lapy JB Daemon\"}"
-		"},"
-		"\"platformViews\":{"
-		"\"previewDisabled\":{"
-		"\"viewData\":{"
-		"\"icon\":{\"type\":\"Predefined\",\"parameters\":{\"icon\":\"download\"}},"
-		"\"message\":{\"body\":\"%s\"}"
-		"}"
-		"}"
-		"}"
-		"},"
-		"\"localNotificationId\":\"LAPY_JB\""
-		"}",
-		text, text);
-	sceNotificationSend(0xFE, true, json);
+    OrbisNotificationRequest req{};
+    va_list ap;
+    va_start(ap, fmt);
+    int len = vsnprintf(req.message, sizeof(req.message), fmt, ap);
+    va_end(ap);
+    if (len > 0 && req.message[len-1] == '\n')
+        req.message[len-1] = '\0';
+    sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
 }
 
 static ssize_t slurp_file(const char *path, char *buf, size_t buf_size) {
