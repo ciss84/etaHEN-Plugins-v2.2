@@ -54,14 +54,13 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 // NOLINTBEGIN
 
 void Hijacker::do_jailbreak(pid_t target_pid) const {
-    LOG("jailbreak attempt : pid=%d", target_pid);
     auto hj = Hijacker::getHijacker(target_pid);
     if (!hj) {
-        LOG("getHijacker(%d) FAIL — process likely exited", target_pid);
+        //LOG("getHijacker(%d) FAIL — process likely exited", target_pid);
         return -1;
     }
     hj->jailbreak(/*escapeSandbox=*/ true);
-    LOG("jailbreak OK pid=%d", target_pid);
+    //LOG("jailbreak OK pid=%d", target_pid);
 }
 
 uintptr_t Hijacker::getFunctionAddress(const SharedLib *lib, const Nid &fname) const noexcept {
