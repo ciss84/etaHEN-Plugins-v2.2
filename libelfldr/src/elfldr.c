@@ -233,6 +233,7 @@ elfldr_load(pid_t pid, uint8_t *elf) {
                          ROUND_PG(phdr[i].p_memsz),
                          PFLAGS(phdr[i].p_flags))) {
 	LOG_PERROR("kernel_mprotect");
+	error = 1;
       }
     } else {
       if(pt_mprotect(pid, ctx.base_addr + phdr[i].p_vaddr,
@@ -367,7 +368,6 @@ elfldr_prepare_exec(pid_t pid, uint8_t *elf) {
     return -1;
   }
 
-  r.r_rsp &= ~0xfl;
   pt_setlong(pid, r.r_rsp-8, r.r_rip);
   r.r_rsp -= 8;
   r.r_rip = entry;
@@ -375,7 +375,6 @@ elfldr_prepare_exec(pid_t pid, uint8_t *elf) {
 
   if(pt_setregs(pid, &r)) {
     LOG_PERROR("pt_setregs");
-    pt_detach(pid, SIGKILL);
     return -1;
   }
 
@@ -568,9 +567,7 @@ sys_budget_set(long budget) {
 
 
 static int
-elfldr_rfork_entry(void* progname) {
-  char* const argv[] = {(char*)progname, 0};
-
+elfldr_rfork_entry(void* argv) {
   if(sys_budget_set(0)) {
     klog_perror("sys_budget_set");
     return -1;
@@ -602,6 +599,117 @@ elfldr_rfork_entry(void* progname) {
 /**
  * Execute an ELF inside a new process.
  **/
+pid_t
+elfldr_spawn(int stdio, char* const argv[], uint8_t* elf, size_t payload_size) {
+  uint8_t int3instr = 0xcc;
+  struct kevent evt;
+  intptr_t brkpoint;
+  uint8_t orginstr;
+  void *stack;
+  pid_t pid;
+  int kq;
+
+  if((kq=kqueue()) < 0) {
+    LOG_PERROR("kqueue");
+    return -1;
+  }
+
+  if(!(stack=malloc(PAGE_SIZE))) {
+    LOG_PERROR("malloc");
+    close(kq);
+    return -1;
+  }
+
+  if((pid=rfork_thread(RFPROC | RFCFDG | RFMEM, stack+PAGE_SIZE-8,
+		       elfldr_rfork_entry, (void*)argv)) < 0) {
+    LOG_PERROR("rfork_thread");
+    free(stack);
+    close(kq);
+    return -1;
+  }
+
+  EV_SET(&evt, pid, EVFILT_PROC, EV_ADD, NOTE_EXEC, 0, 0);
+  if(kevent(kq, &evt, 1, &evt, 1, 0) < 0) {
+    LOG_PERROR("kevent");
+    free(stack);
+    close(kq);
+    return -1;
+  }
+
+  if(waitpid(pid, 0, 0) < 0) {
+    LOG_PERROR("waitpid");
+    free(stack);
+    close(kq);
+    return -1;
+  }
+
+  free(stack);
+  close(kq);
+
+  // The proc is now in the STOP state, with the instruction pointer pointing
+  // at the libkernel entry. Let the kernel assign process parameters accessed
+  // via sceKernelGetProcParam()
+  if(pt_syscall(pid, 599)) {
+    LOG_PT_PERROR(pid, "sys_dynlib_process_needed_and_relocate");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  // Allow libc to allocate arbitrary amount of memory.
+  elfldr_set_heap_size(pid, -1);
+
+  //Insert a breakpoint at the eboot entry.
+  if(!(brkpoint=kernel_dynlib_entry_addr(pid, 0))) {
+    LOG_PUTS("kernel_dynlib_entry_addr failed");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+  brkpoint += 58;// offset to invocation of main()
+
+  if(kernel_mprotect(pid, brkpoint, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC)) {
+    LOG_PUTS("kernel_mprotect failed");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  if(pt_copyout(pid, brkpoint, &orginstr, sizeof(orginstr))) {
+    LOG_PERROR("pt_copyout");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+  if(pt_copyin(pid, &int3instr, brkpoint, sizeof(int3instr))) {
+    LOG_PERROR("pt_copyin");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  // Continue execution until we hit the breakpoint, then remove it.
+  if(pt_continue(pid, SIGCONT)) {
+    LOG_PERROR("pt_continue");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+  if(waitpid(pid, 0, 0) == -1) {
+    LOG_PERROR("waitpid");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+  if(pt_copyin(pid, &orginstr, brkpoint, sizeof(orginstr))) {
+    LOG_PERROR("pt_copyin");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  // Execute the ELF
+  elfldr_set_procname(pid, argv[0]);
+  if(elfldr_exec(pid, stdio, elf)) {
+    kill(pid, SIGKILL);
+    return -1;
+  }
+
+  return pid;
+}
+
 
 /**
  * Fint the pid of a process with the given name.
@@ -718,122 +826,3 @@ elfldr_read(int fd, uint8_t** elf, size_t* elf_size) {
 
   return 0;
 }
-
-
-/**
- * Execute an ELF inside a new process.
- **/
-pid_t
-elfldr_spawn(const char* cwd, int stdio, uint8_t* elf, const char* name) {
-
-  uint8_t int3instr = 0xcc;
-  struct kevent evt;
-  intptr_t brkpoint;
-  uint8_t orginstr;
-  void *stack;
-  pid_t pid;
-  int kq;
-
-  if((kq=kqueue()) < 0) {
-    LOG_PERROR("kqueue");
-    return -1;
-  }
-
-  if(!(stack=malloc(PAGE_SIZE))) {
-    LOG_PERROR("malloc");
-    close(kq);
-    return -1;
-  }
-
-  if((pid=rfork_thread(RFPROC | RFCFDG | RFMEM, stack+PAGE_SIZE-8,
-		       elfldr_rfork_entry, (void*)name)) < 0) {
-    LOG_PERROR("rfork_thread");
-    free(stack);
-    close(kq);
-    return -1;
-  }
-
-  EV_SET(&evt, pid, EVFILT_PROC, EV_ADD, NOTE_EXEC, 0, 0);
-  if(kevent(kq, &evt, 1, &evt, 1, 0) < 0) {
-    LOG_PERROR("kevent");
-    free(stack);
-    close(kq);
-    return -1;
-  }
-
-  if(waitpid(pid, 0, 0) < 0) {
-    LOG_PERROR("waitpid");
-    free(stack);
-    close(kq);
-    return -1;
-  }
-
-  free(stack);
-  close(kq);
-
-  // The proc is now in the STOP state, with the instruction pointer pointing
-  // at the libkernel entry. Let the kernel assign process parameters accessed
-  // via sceKernelGetProcParam()
-  if(pt_syscall(pid, 599)) {
-    LOG_PT_PERROR(pid, "sys_dynlib_process_needed_and_relocate");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-
-  // Allow libc to allocate arbitrary amount of memory.
-  elfldr_set_heap_size(pid, -1);
-
-  //Insert a breakpoint at the eboot entry.
-  if(!(brkpoint=kernel_dynlib_entry_addr(pid, 0))) {
-    LOG_PUTS("kernel_dynlib_entry_addr failed");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-  brkpoint += 58;// offset to invocation of main()
-
-  if(kernel_mprotect(pid, brkpoint, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC)) {
-    LOG_PUTS("kernel_mprotect failed");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-
-  if(pt_copyout(pid, brkpoint, &orginstr, sizeof(orginstr))) {
-    LOG_PERROR("pt_copyout");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-  if(pt_copyin(pid, &int3instr, brkpoint, sizeof(int3instr))) {
-    LOG_PERROR("pt_copyin");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-
-  // Continue execution until we hit the breakpoint, then remove it.
-  if(pt_continue(pid, SIGCONT)) {
-    LOG_PERROR("pt_continue");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-  if(waitpid(pid, 0, 0) == -1) {
-    LOG_PERROR("waitpid");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-  if(pt_copyin(pid, &orginstr, brkpoint, sizeof(orginstr))) {
-    LOG_PERROR("pt_copyin");
-    pt_detach(pid, SIGKILL);
-    return -1;
-  }
-
-  // Execute the ELF
-  elfldr_set_procname(pid, name);
-  if(elfldr_exec(pid, stdio, elf)) {
-    kill(pid, SIGKILL);
-    return -1;
-  }
-
-  return pid;
-}
-
-
-
