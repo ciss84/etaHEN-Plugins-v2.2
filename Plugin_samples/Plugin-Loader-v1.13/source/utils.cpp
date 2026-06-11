@@ -227,7 +227,7 @@ GameInjectorConfig parse_injector_config()
 					current_tid = line.substr(1, line.length()-2);
 					plugin_log("Config: section [%s]", current_tid.c_str());
 				}
-				else if (line.find("fakelib") == 0)
+				else if (!current_tid.empty() && line.find("fakelib") == 0)
 				{
 					size_t eq = line.find('=');
 					if (eq != std::string::npos)
@@ -236,17 +236,8 @@ GameInjectorConfig parse_injector_config()
 						size_t vs = val.find_first_not_of(" \t");
 						if (vs != std::string::npos) val = val.substr(vs);
 						bool enabled = !(val == "false" || val == "0");
-
-						if (current_tid == "DEFAULT")
-						{
-							config.fakelib_default = enabled;
-							plugin_log("Config: [DEFAULT] fakelib = %s (global)", enabled ? "true" : "false");
-						}
-						else if (!current_tid.empty())
-						{
-							config.fakelib_enabled[current_tid] = enabled;
-							plugin_log("Config: [%s] fakelib = %s", current_tid.c_str(), enabled ? "true" : "false");
-						}
+						config.fakelib_enabled[current_tid] = enabled;
+						plugin_log("Config: [%s] fakelib = %s", current_tid.c_str(), enabled ? "true" : "false");
 					}
 				}
 				else if (!current_tid.empty())

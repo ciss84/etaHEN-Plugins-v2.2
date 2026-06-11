@@ -153,7 +153,7 @@ struct GameStuff {
   uint64_t ASLR_Base = 0;             // +0x20
   char prx_path[256];                  // +0x28
   int loaded = 0;                      // +0x128
-  int last_lsm_result = 0;            // +0x12C: retour de sceKernelLoadStartModule (debug)
+  uint32_t _pad = 0;                   // +0x12C (explicit padding)
   uint64_t game_hash = 0;             // +0x130
   int frame_delay = 300;              // +0x138
   int frame_counter = 0;              // +0x13C
@@ -172,7 +172,7 @@ static_assert(offsetof(GameStuff, frame_delay)             == 0x138, "GameStuff:
 static_assert(offsetof(GameStuff, frame_counter)           == 0x13C, "GameStuff::frame_counter offset wrong");
 
 struct GameBuilder {
-  static constexpr size_t SHELLCODE_SIZE      = 147;
+  static constexpr size_t SHELLCODE_SIZE      = 137;
   static constexpr size_t SHELLCODE_SIZE_AUTO = 210;
   static constexpr size_t EXTRA_STUFF_ADDR_OFFSET = 2;
 
@@ -194,10 +194,6 @@ struct GameBuilder {
 //  Nouveau code:
 //    90 90 90 90 90  = NOP x5
 //    90 90           = NOP x2
-//
-//  Fix [106-111]: MOV [RBX+0x12C], EAX — store retour LoadStartModule
-//                 dans GameStuff::last_lsm_result pour diagnostic externe
-//  Fix [112-115]: TEST EAX, EAX / JS epilogue — skip loaded=1 si erreur
 // ─────────────────────────────────────────────────────────────────────────────
 static constexpr GameBuilder BUILDER_TEMPLATE {
     // [0-9]   MOV RDX, stuffAddr (patché par setExtraStuffAddr)
@@ -208,9 +204,9 @@ static constexpr GameBuilder BUILDER_TEMPLATE {
     0x48, 0xb8, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x66, 0x72,
     // [30-32] MOV RBX, RDX
     0x48, 0x89, 0xd3,
-    // [33-35] MOV R14, RSI
+    // [33-35] MOV R14, RSI  (data ptr)
     0x49, 0x89, 0xf6,
-    // [36-38] MOV R15D, EDI
+    // [36-38] MOV R15D, EDI (handle)
     0x41, 0x89, 0xff,
     // [39-42] MOV [RSP], RAX
     0x48, 0x89, 0x04, 0x24,
@@ -220,16 +216,17 @@ static constexpr GameBuilder BUILDER_TEMPLATE {
     0x48, 0x89, 0x44, 0x24, 0x08,
     // [58-59] CALL [RDX] = scePadReadState (original)
     0xff, 0x12,
-    // [60-61] MOV EBP, EAX (save retval)
+    // [60-61] MOV EBP, EAX (save return value)
     0x89, 0xc5,
-    // [62-70] NOP x9
+    // [62-70] NOP x9 — bypass handle + retval checks (test FW7.6x+)
     0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
-    // [71-77] NOP x7 (FW10 fix - connected check supprimé)
+    // [71-77] FIX FW10: connected check supprime (7x NOP)
+    //         Ancien: CMP BYTE PTR [R14+0x4C],0 / JE skip
     0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
     // [78-84] CMP DWORD PTR [RBX+0x128], 0  (loaded ?)
     0x83, 0xbb, 0x28, 0x01, 0x00, 0x00, 0x00,
-    // [85-86] JNZ epilogue (déjà chargé)
-    0x75, 0x2f,
+    // [85-86] JNZ epilogue (deja charge)
+    0x75, 0x25,
     // [87-90] LEA RDI, [RBX+0x28]  (prx_path)
     0x48, 0x8d, 0x7b, 0x28,
     // [91-92] XOR ESI, ESI  (args = 0)
@@ -242,35 +239,29 @@ static constexpr GameBuilder BUILDER_TEMPLATE {
     0x45, 0x31, 0xc0,
     // [100-102] XOR R9D, R9D  (pRes = NULL)
     0x45, 0x31, 0xc9,
-    // [103-105] CALL [RBX+0x10] = sceKernelLoadStartModule
+    // [103-105] CALL [RBX+0x10]  = sceKernelLoadStartModule
     0xff, 0x53, 0x10,
-    // [106-111] MOV [RBX+0x12C], EAX  ← store last_lsm_result (debug)
-    0x89, 0x83, 0x2c, 0x01, 0x00, 0x00,
-    // [112-113] TEST EAX, EAX
-    0x85, 0xc0,
-    // [114-115] JS epilogue  (si erreur skip loaded=1, retry au prochain cycle)
-    0x78, 0x12,
-    // [116-118] MOV RSI, RSP  (msg debugout)
+    // [106-108] MOV RSI, RSP
     0x48, 0x89, 0xe6,
-    // [119-120] XOR EDI, EDI
+    // [109-110] XOR EDI, EDI
     0x31, 0xff,
-    // [121-123] CALL [RBX+0x08] = debugout
+    // [111-113] CALL [RBX+0x08]  = debugout
     0xff, 0x53, 0x08,
-    // [124-133] MOV DWORD PTR [RBX+0x128], 1  (loaded = 1)
+    // [114-123] MOV DWORD PTR [RBX+0x128], 1  (loaded = 1)
     0xc7, 0x83, 0x28, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-    // [134-135] MOV EAX, EBP  ← epilogue
+    // [124-125] MOV EAX, EBP  (restore scePadReadState retval)
     0x89, 0xe8,
-    // [136-139] ADD RSP, 24
+    // [126-129] ADD RSP, 24
     0x48, 0x83, 0xc4, 0x18,
-    // [140] POP RBX
+    // [130]     POP RBX
     0x5b,
-    // [141-142] POP R14
+    // [131-132] POP R14
     0x41, 0x5e,
-    // [143-144] POP R15
+    // [133-134] POP R15
     0x41, 0x5f,
-    // [145] POP RBP
+    // [135]     POP RBP
     0x5d,
-    // [146] RET
+    // [136]     RET
     0xc3
 };
 
@@ -316,14 +307,6 @@ struct PRXConfig {
 struct GameInjectorConfig {
 	std::map<std::string, std::vector<PRXConfig>> games;
 	std::map<std::string, bool> fakelib_enabled;
-	bool fakelib_default = true;  // fallback global si pas de cle par TID
-
-	bool is_fakelib_enabled(const std::string &tid) const {
-		auto it = fakelib_enabled.find(tid);
-		if (it != fakelib_enabled.end())
-			return it->second;
-		return fakelib_default;
-	}
 };
 
 void plugin_log(const char* fmt, ...);

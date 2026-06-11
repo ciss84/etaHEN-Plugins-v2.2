@@ -3,7 +3,6 @@
 #include <signal.h>
 #include <string>
 #include <ps5/kernel.h>
-#include <kernel/proc.hpp>
 
 #include <dirent.h>
 #include <stdarg.h>
@@ -52,6 +51,7 @@ extern "C" {
 void sig_handler(int signo)
 {
     printf_notification("Plugin Loader crashed: signal %d    ", signo);
+    //printBacktraceForCrash();
     exit(-1);
 }
 
@@ -322,8 +322,9 @@ static void inject_into_game(pid_t pid, const char *title_id,
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
 
+    auto fakelib_cfg  = config.fakelib_enabled.find(std::string(title_id));
     bool fakelib_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
-                          config.is_fakelib_enabled(std::string(title_id));
+                          (fakelib_cfg == config.fakelib_enabled.end() || fakelib_cfg->second);
 
     if (fakelib_wanted && resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id))) {
         char fakelib_check[PATH_MAX];
@@ -367,44 +368,9 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
-        // Attendre que le process soit stable avant de suspendre
-        plugin_log("[PLT] Waiting for process stability before suspend...");
-        usleep(500000);
-        for (int i = 0; i < 10; i++) {
-            if (IsProcessRunning(pid)) break;
-            usleep(100000);
-        }
-
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(1500000); // 1.5s — laisser le process finir son init avant jailbreak
-
-        // Jailbreak conditionnel : uniquement si le process n'est pas deja
-        // root (uid != 0). Sur FW 5.50 le payload le fait au boot, sur 8.xx+
-        // le game est encore sandboxe a ce stade.
-        // Skip pour les CUSA (PS4 BC) — deja unsandboxed par le layer BC.
-        {
-            bool is_cusa = (strncmp(title_id, "CUSA", 4) == 0);
-            if (!is_cusa) {
-                auto proc = ::getProc(pid);
-                if (proc) {
-                    uintptr_t ucred = proc->p_ucred();
-                    int uid = -1;
-                    kernel_copyout(ucred + 0x04, &uid, sizeof(uid));
-                    if (uid != 0) {
-                        plugin_log("[PLT] pid %d not jailbroken (uid=%d), jailbreaking...", pid, uid);
-                        hijacker->jailbreak(/*escapeSandbox=*/ false);
-                        plugin_log("[PLT] Jailbreak done");
-                    } else {
-                        plugin_log("[PLT] pid %d already jailbroken (uid=0), skip", pid);
-                    }
-                } else {
-                    plugin_log("[PLT] getProc(%d) failed, skip jailbreak", pid);
-                }
-            } else {
-                plugin_log("[PLT] CUSA title, skip jailbreak (BC layer handles it)");
-            }
-        }
+        usleep(500000);
 
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -418,18 +384,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 sceKernelPrepareToResumeProcess(pid);
                 sceKernelResumeProcess(pid);
                 
-                // Poll loaded flag jusqu'a 15s max (frame_delay + temps load PRX)
-                if (stuff_addr != 0) {
-                    int loaded_flag = 0;
-                    int lsm_result  = 0;
-                    for (int t = 0; t < 600; t++) {  // 60s max
-                        usleep(100000); // 100ms
-                        hijacker->read(stuff_addr + 0x128, &loaded_flag, sizeof(loaded_flag));
-                        hijacker->read(stuff_addr + 0x12C, &lsm_result,  sizeof(lsm_result));
-                        if (loaded_flag != 0 || lsm_result != 0) break;
-                    }
-                    plugin_log("[PLT] loaded=%d | LoadStartModule result=0x%08x", loaded_flag, (uint32_t)lsm_result);
-                }
+                // Attends que le PRX se charge (~2-3 secondes)
+                sleep(3);
                 
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
@@ -480,7 +436,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.13.8 + DAEMON-JB + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.13 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -514,7 +470,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Plugin Loader v1.13.8: started     \nBy @84Ciss ");
+    printf_notification("Plugin Loader v1.13: started     \nBy @84Ciss ");
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
@@ -561,8 +517,9 @@ int main()
 
                 char sid[32] = {};
                 char *fml = nullptr;
+                auto fml_cfg = config.fakelib_enabled.find(std::string(title_id));
                 bool fml_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
-                                  config.is_fakelib_enabled(std::string(title_id));
+                                  (fml_cfg == config.fakelib_enabled.end() || fml_cfg->second);
                 if (fml_wanted && resolve_sandbox_id(title_id, sid, sizeof(sid))) {
                     char fakelib_check[PATH_MAX];
                     snprintf(fakelib_check, sizeof(fakelib_check),
