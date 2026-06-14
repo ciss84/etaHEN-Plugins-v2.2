@@ -12,15 +12,16 @@ else()
   set(IS_SUBPROJECT FALSE)
 endif()
 
-# Sources lib (socksrv.c exclu = il a son propre main())
+# Sources lib uniquement
+# - socksrv.c  exclu : a son propre main()
+# - bootstrap.c exclu : inclut socksrv_elf.c généré par xxd (build standalone seulement)
+# - main.c      exclu : inclut bootstrap_elf.c généré par xxd (build standalone seulement)
 set(ELFLOADER_SOURCES
   elfldr.c
   selfldr.c
   notify.c
   pt.c
   uri.c
-  bootstrap.c
-  main.c
 )
 
 add_library(elfloader STATIC ${ELFLOADER_SOURCES})
