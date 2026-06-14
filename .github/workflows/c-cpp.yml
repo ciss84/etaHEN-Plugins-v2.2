@@ -56,6 +56,7 @@ jobs:
         cp lib/libNidResolver.a   libs_out/
         cp lib/libNineS.a         libs_out/
         cp lib/libelfldr.a        libs_out/
+        cp lib/libelfloader.a     libs_out/
         cp lib/libSelfDecryptor.a libs_out/
         cd libs_out && zip ../libs.zip *.a
 
