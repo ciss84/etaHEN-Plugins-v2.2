@@ -475,7 +475,7 @@ int main()
         perror("kevent setup");
         close(kq);
         return -1;
-    }.
+    }
 
     printf_notification("Plugin Loader v1.13: Started FW: %u.%02u \nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
