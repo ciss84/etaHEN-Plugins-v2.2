@@ -140,6 +140,17 @@ bool HookGame(UniquePtr<Hijacker> &hijacker, uint64_t alsr_b, const char* prx_pa
         return true;
       }
 
+      // ── Check si le PRX est déjà chargé dans le process cible ────────────
+      const char *basename = strrchr(prx_path, '/');
+      basename = basename ? basename + 1 : prx_path;
+      unsigned int existing_handle = 0;
+      if (kernel_dynlib_handle(current_pid, basename, &existing_handle) == 0) {
+          plugin_log("[HookGame] %s deja charge dans pid %d (handle 0x%x), skip", basename, current_pid, existing_handle);
+          if (out_stuff_addr) *out_stuff_addr = 0;
+          return true;
+      }
+      // ─────────────────────────────────────────────────────────────────────
+
       plugin_log("[HookGame] Creation du PREMIER hook pour PID %d", current_pid);
 
       auto code = hijacker->getTextAllocator().allocate(shellcode_size);

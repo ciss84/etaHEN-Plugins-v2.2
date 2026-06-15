@@ -98,63 +98,42 @@ typedef struct OrbisPadData {
 typedef struct {
   int (*scePadReadState)(int handle, OrbisPadData *pData);
   int (*sceKernelDebugOutText)(int channel, const char *txt);
-  int (*sceKernelLoadStartModule)(const char *moduleFileName, int args, const void *argp, int flags, void *opt, int *pRes);
+  int (*sceKernelLoadStartModule)(const char *moduleFileName, size_t args, const void *argp, uint32_t flags, const void *pOpt, int *pRes);
   int (*sceKernelDlsym)(int handle, const char *symbol, void **addrp);
   uint64_t ASLR_Base;
   char prx_path[256];
   int loaded;
-  uint64_t game_hash;
+  uint64_t game_hash;   // garde pour compatibilite ABI avec utils.hpp
   int frame_delay;
   int frame_counter;
 } GameExtraStuff;
 
 
-static uint64_t __attribute__((used)) simple_hash(const char *str) {
-    uint64_t hash = 0;
-    for (int i = 0; str[i] != '\0' && i < 256; i++) {
-        hash = hash * 31 + str[i];
-    }
-    return hash;
-}
-
-// Messages statiques - créés 1 fois (optimisation)
-static const char msg_success[] = "PRX loaded ok";
-static const char msg_error[] = "Lib err lib load";
-
-static int __attribute__((used)) scePadReadState_Hook(int handle, OrbisPadData *pData, GameExtraStuff *restrict stuff){
+static int __attribute__((used)) scePadReadState_Hook(int handle, OrbisPadData *pData, GameExtraStuff *restrict stuff) {
 
     // Appeler scePadReadState original
     int ret = stuff->scePadReadState(handle, pData);
-    
-    // OPTIMISATION 1: Early return si déjà chargé
-    uint64_t current_hash = simple_hash(stuff->prx_path);
-    if (stuff->loaded && stuff->game_hash == current_hash) {
-        return ret; // Gain ~90% CPU
-    }
-    
-    // OPTIMISATION 2: Compteur de frames
+
+    // Early return si deja charge
+    if (stuff->loaded) return ret;
+
+    // Frame delay avant premier chargement
     if (stuff->frame_counter < stuff->frame_delay) {
         stuff->frame_counter++;
         return ret;
     }
-    
+
     // Chargement du PRX
-    int res = stuff->sceKernelLoadStartModule(stuff->prx_path, 0, 0, 0, 0, 0);
-    
+    int pRes = 0;
+    int res = stuff->sceKernelLoadStartModule(stuff->prx_path, 0, 0, 0, 0, &pRes);
+
     if (res >= 0) {
-        // Succès
-        stuff->sceKernelDebugOutText(0, msg_success);
         stuff->loaded = 1;
-        stuff->game_hash = current_hash;
         stuff->frame_counter = 0;
     } else {
-        // Erreur - retry dans 3 sec
-        stuff->sceKernelDebugOutText(0, msg_error);
-        stuff->frame_counter = stuff->frame_delay - 180;
-        if (stuff->frame_counter < 0) {
-            stuff->frame_counter = 0;
-        }
+        // Retry dans ~3 sec (180 frames)
+        stuff->frame_counter = (stuff->frame_delay > 180) ? stuff->frame_delay - 180 : 0;
     }
-    
+
     return ret;
 }
