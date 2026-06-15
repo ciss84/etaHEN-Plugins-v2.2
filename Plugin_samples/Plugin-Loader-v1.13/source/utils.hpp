@@ -172,7 +172,7 @@ static_assert(offsetof(GameStuff, frame_delay)             == 0x138, "GameStuff:
 static_assert(offsetof(GameStuff, frame_counter)           == 0x13C, "GameStuff::frame_counter offset wrong");
 
 struct GameBuilder {
-  static constexpr size_t SHELLCODE_SIZE      = 137;
+  static constexpr size_t SHELLCODE_SIZE      = 132;
   static constexpr size_t SHELLCODE_SIZE_AUTO = 210;
   static constexpr size_t EXTRA_STUFF_ADDR_OFFSET = 2;
 
