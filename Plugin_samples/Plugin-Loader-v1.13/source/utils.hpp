@@ -172,7 +172,7 @@ static_assert(offsetof(GameStuff, frame_delay)             == 0x138, "GameStuff:
 static_assert(offsetof(GameStuff, frame_counter)           == 0x13C, "GameStuff::frame_counter offset wrong");
 
 struct GameBuilder {
-  static constexpr size_t SHELLCODE_SIZE      = 139;
+  static constexpr size_t SHELLCODE_SIZE      = 137;
   static constexpr size_t SHELLCODE_SIZE_AUTO = 210;
   static constexpr size_t EXTRA_STUFF_ADDR_OFFSET = 2;
 
@@ -237,8 +237,8 @@ static constexpr GameBuilder BUILDER_TEMPLATE {
     0x31, 0xc9,
     // [97-99] XOR R8D, R8D  (pOpt = NULL)
     0x45, 0x31, 0xc0,
-    // [100-104] LEA R9, [RSP+0x4]  (pRes = pointeur stack valide)
-    0x4c, 0x8d, 0x4c, 0x24, 0x04,    
+    // [100-102] XOR R9D, R9D  (pRes = NULL)
+    0x45, 0x31, 0xc9,  
     // [103-105] CALL [RBX+0x10]  = sceKernelLoadStartModule
     0xff, 0x53, 0x10,
     // [106-108] MOV RSI, RSP
