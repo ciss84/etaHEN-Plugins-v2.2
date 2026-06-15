@@ -445,7 +445,7 @@ int main()
     uint32_t fw = kernel_get_fw_version();
     uint32_t fw_major = (fw >> 24) & 0xFF;
     uint32_t fw_minor = (fw >> 16) & 0xFF;
-    plugin_log("FW detected: 0x%08x (%u.%02u)", fw, fw_major, fw_minor);
+    plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
@@ -477,7 +477,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Plugin Loader v1.13: Started FW: %u.%02u \nBy @84Ciss ", fw_major, fw_minor);
+    printf_notification("Plugin Loader v1.13: Started FW: %x.%02x \nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
