@@ -221,7 +221,7 @@ static constexpr GameBuilder BUILDER_TEMPLATE {
     // [62-70] NOP x9 — bypass handle + retval checks (test FW7.6x+)
     0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
     // [71-77] FIX FW10: connected check supprime (7x NOP)
-    //         Ancien: CMP BYTE PTR [R14+0x4C],0 / JE skip
+    // Ancien: CMP BYTE PTR [R14+0x4C],0 / JE skip
     0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
     // [78-84] CMP DWORD PTR [RBX+0x128], 0  (loaded ?)
     0x83, 0xbb, 0x28, 0x01, 0x00, 0x00, 0x00,
@@ -237,8 +237,8 @@ static constexpr GameBuilder BUILDER_TEMPLATE {
     0x31, 0xc9,
     // [97-99] XOR R8D, R8D  (pOpt = NULL)
     0x45, 0x31, 0xc0,
-    // [100-102] XOR R9D, R9D  (pRes = NULL)
-    0x45, 0x31, 0xc9,
+    // [100-104] LEA R9, [RSP+0x4]  (pRes = pointeur stack valide)
+    0x4c, 0x8d, 0x4c, 0x24, 0x04,    
     // [103-105] CALL [RBX+0x10]  = sceKernelLoadStartModule
     0xff, 0x53, 0x10,
     // [106-108] MOV RSI, RSP
