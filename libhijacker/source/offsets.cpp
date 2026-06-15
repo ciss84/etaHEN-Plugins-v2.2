@@ -21,13 +21,6 @@ extern "C" {
 #include <ps5/kernel.h>
 }
 
-extern const intptr_t KERNEL_ADDRESS_DATA_BASE;
-extern const intptr_t KERNEL_ADDRESS_ALLPROC;
-extern const intptr_t KERNEL_ADDRESS_ROOTVNODE;
-extern const intptr_t KERNEL_ADDRESS_SECURITY_FLAGS;
-extern const intptr_t KERNEL_ADDRESS_UTOKEN_FLAGS;
-extern const intptr_t KERNEL_ADDRESS_QA_FLAGS;
-
 namespace offsets {
 
 static inline size_t rel(intptr_t va) {
@@ -40,8 +33,6 @@ size_t qa_flags()       { return rel(KERNEL_ADDRESS_QA_FLAGS); }
 size_t utoken_flags()   { return rel(KERNEL_ADDRESS_UTOKEN_FLAGS); }
 size_t root_vnode()     { return rel(KERNEL_ADDRESS_ROOTVNODE); }
 
-size_t ucred_sceattr() {
-    return (kern_get_fw_version() >= 0x08000000u) ? 0x88u : 0x83u;
-}
+size_t ucred_sceattr()  { return (size_t)KERNEL_OFFSET_UCRED_CR_SCEATTRS; }
 
 }
