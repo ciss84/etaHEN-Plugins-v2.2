@@ -15,32 +15,33 @@
 // unknown fw the SDK returns 0 and libhijacker fails cleanly with NULL
 // attach — same graceful failure as the old 9.40-hardcoded path on wrong fw.
 
+
 extern "C" {
 #include <stddef.h>
 #include <ps5/kernel.h>
 }
 
+extern const intptr_t KERNEL_ADDRESS_DATA_BASE;
+extern const intptr_t KERNEL_ADDRESS_ALLPROC;
+extern const intptr_t KERNEL_ADDRESS_ROOTVNODE;
+extern const intptr_t KERNEL_ADDRESS_SECURITY_FLAGS;
+extern const intptr_t KERNEL_ADDRESS_UTOKEN_FLAGS;
+extern const intptr_t KERNEL_ADDRESS_QA_FLAGS;
+
 namespace offsets {
 
-// Convert absolute kernel VA to offset from kernel_base. Signed-int
-// subtraction so the high-half canonical addresses cancel cleanly.
-static inline size_t rel(intptr_t absolute_va) {
-    return (size_t)(absolute_va - KERNEL_ADDRESS_DATA_BASE);
+static inline size_t rel(intptr_t va) {
+    return (size_t)(va - KERNEL_ADDRESS_DATA_BASE);
 }
 
-size_t allproc()         { return rel(KERNEL_ADDRESS_ALLPROC); }
-size_t security_flags()  { return rel(KERNEL_ADDRESS_SECURITY_FLAGS); }
-size_t qa_flags()        { return rel(KERNEL_ADDRESS_QA_FLAGS); }
-size_t utoken_flags()    { return rel(KERNEL_ADDRESS_UTOKEN_FLAGS); }
-size_t root_vnode()      { return rel(KERNEL_ADDRESS_ROOTVNODE); }
+size_t allproc()        { return rel(KERNEL_ADDRESS_ALLPROC); }
+size_t security_flags() { return rel(KERNEL_ADDRESS_SECURITY_FLAGS); }
+size_t qa_flags()       { return rel(KERNEL_ADDRESS_QA_FLAGS); }
+size_t utoken_flags()   { return rel(KERNEL_ADDRESS_UTOKEN_FLAGS); }
+size_t root_vnode()     { return rel(KERNEL_ADDRESS_ROOTVNODE); }
 
-// cr_sceAttr[0] offset inside ucred struct.
-// Sony shifted this field in 8.00 — 0x83 on older fw, 0x88 on 8.00+.
-// kern_sdk_version format : 0xMMmmpppp (major/minor/patch).
 size_t ucred_sceattr() {
-    uint32_t fw = 0;
-    kernel_copyout(KERNEL_ADDRESS_DATA_BASE, &fw, sizeof(fw));
-    return (fw >= 0x08000000u) ? 0x88u : 0x83u;
+    return (kern_get_fw_version() >= 0x08000000u) ? 0x88u : 0x83u;
 }
 
 }
