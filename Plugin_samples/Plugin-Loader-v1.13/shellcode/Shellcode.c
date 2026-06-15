@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stddef.h>
 
 #define ORBIS_PAD_PORT_TYPE_STANDARD 0
 #define ORBIS_PAD_PORT_TYPE_SPECIAL 2
