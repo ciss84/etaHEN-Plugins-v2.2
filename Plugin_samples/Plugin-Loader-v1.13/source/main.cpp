@@ -441,6 +441,13 @@ int main()
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
 
+    // ── FW detection ─────────────────────────────────────────────────────
+    uint32_t fw = kernel_get_fw_version();
+    uint32_t fw_major = (fw >> 24) & 0xFF;
+    uint32_t fw_minor = (fw >> 16) & 0xFF;
+    plugin_log("FW detected: 0x%08x (%u.%02u)", fw, fw_major, fw_minor);
+    // ─────────────────────────────────────────────────────────────────────
+
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
@@ -468,9 +475,9 @@ int main()
         perror("kevent setup");
         close(kq);
         return -1;
-    }
+    }.
 
-    printf_notification("Plugin Loader v1.13.1: started     \nBy @84Ciss ");
+    printf_notification("Plugin Loader v1.13.1: Started FW: %u.%02u \nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
