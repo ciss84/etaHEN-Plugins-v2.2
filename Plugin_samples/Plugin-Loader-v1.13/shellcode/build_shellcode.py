@@ -6,6 +6,14 @@ Lance depuis le dossier shellcode/ : python build_shellcode.py
 """
 
 import subprocess
+
+# Python 3.6-compatible: Capture stdout and stderr with PIPE  
+result = subprocess.run(["ls", "-l"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  
+ 
+# Access captured output (stdout/stderr are bytes; decode to string)  
+print("Command Output:", result.stdout.decode("utf-8"))  # Decode bytes to string  
+print("Error Output:", result.stderr.decode("utf-8"))    # Handle errors if any  
+
 import sys
 import os
 import re
@@ -42,7 +50,12 @@ def compile_shellcode(clang, src, obj):
     cmd = [clang] + CLANG_FLAGS + ["-c", src, "-o", obj]
     print(f"[1/3] Compilation...")
     print(f"      {' '.join(cmd)}")
-    r = subprocess.run(cmd, capture_output=True, text=True)
+
+    r = subprocess.run(["ls", "-l"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  
+     # Access captured output (stdout/stderr are bytes; decode to string)  
+    print("Command Output:", result.stdout.decode("utf-8"))  # Decode bytes to string  
+    print("Error Output:", result.stderr.decode("utf-8"))    # Handle errors if any
+ 
     if r.returncode != 0:
         print(f"[ERREUR] Compilation echouee !")
         print(r.stderr)
@@ -72,7 +85,11 @@ def extract_bytes(obj):
         print("[ERREUR] objdump/llvm-objdump introuvable")
         return None
 
-    r = subprocess.run([objdump, "-d", obj], capture_output=True, text=True)
+    r = subprocess.run([objdump, "-l", obj], stdout=subprocess.PIPE, stderr=subprocess.PIPE)  
+     # Access captured output (stdout/stderr are bytes; decode to string)  
+    print("Command Output:", result.stdout.decode("utf-8"))  # Decode bytes to string  
+    print("Error Output:", result.stderr.decode("utf-8"))    # Handle errors if any
+
     if r.returncode != 0:
         print(f"[ERREUR] objdump echoue : {r.stderr}")
         return None
@@ -158,7 +175,7 @@ def main():
 
 if __name__ == "__main__":
     try:
-        main()
+        main()      
     except Exception as e:
         print(f"\n[EXCEPTION] {e}")
         import traceback
