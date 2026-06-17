@@ -65,7 +65,6 @@ jobs:
       with:
         name: SDK-Binaries
         path:  |
-              ELF_samples/bin/*.elf
-              Plugin_samples/bin/*.elf
-              Plugin_samples/bin/*.plugin
+              bin/*.elf
+              bin/*.plugin
               libs.zip
