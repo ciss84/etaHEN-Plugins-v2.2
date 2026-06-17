@@ -64,8 +64,9 @@ set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -DDEBUG -gfull -gdwarf-2 -O0 -pedantic -pe
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 ")
 add_custom_command(TARGET ${basename}
                    POST_BUILD
+                   COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf.bak"
                    COMMAND python3 "${CMAKE_SOURCE_DIR}/lib/make_plugin.py" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf" "${PLUGIN_TITLE_ID}" "${PLUGIN_VERSION}"
-                   COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf"
+                   COMMAND ${CMAKE_COMMAND} -E rename "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf.bak" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf"
                    COMMENT "Finishing Plugin"
                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
