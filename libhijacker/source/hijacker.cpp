@@ -129,24 +129,24 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 	int64_t caps_store = -1;
 	uint8_t attr_store[] = {0x80, 0, 0, 0, 0, 0, 0, 0};
 
-	copyin(ucred + 0x04, &uid_store, 0x4);		  // cr_uid
-	copyin(ucred + 0x08, &uid_store, 0x4);		  // cr_ruid
-	copyin(ucred + 0x0C, &uid_store, 0x4);		  // cr_svuid
+	kernel_copyin(ucred + 0x04, &uid_store, 0x4);		  // cr_uid
+	kernel_copyin(ucred + 0x08, &uid_store, 0x4);		  // cr_ruid
+	kernel_copyin(ucred + 0x0C, &uid_store, 0x4);		  // cr_svuid
 	
-	copyin(ucred + 0x10, &ngroups_store, 0x4);	  // cr_ngroups
-	copyin(ucred + 0x14, &uid_store, 0x4);		  // cr_rgid
+	kernel_copyin(ucred + 0x10, &ngroups_store, 0x4);	  // cr_ngroups
+	kernel_copyin(ucred + 0x14, &uid_store, 0x4);		  // cr_rgid
 
 	if (escapeSandbox) {
 		// Escape sandbox
-		copyin(fd + 0x10, rootvnode_area_store.get(), 0x8);  // fd_rdir
-		copyin(fd + 0x18, rootvnode_area_store.get(), 0x8);  // fd_jdir
+		kernel_copyin(fd + 0x10, rootvnode_area_store.get(), 0x8);  // fd_rdir
+		kernel_copyin(fd + 0x18, rootvnode_area_store.get(), 0x8);  // fd_jdir
 	}
 
 	// Escalate sony privileges
-	copyin(ucred + 0x58, &authid_store, 0x8);	 // cr_sceAuthID
-	copyin(ucred + 0x60, &caps_store, 0x8);		 // cr_sceCaps[0]
-	copyin(ucred + 0x68, &caps_store, 0x8);		 // cr_sceCaps[1]
-	copyin(ucred + 0x83, attr_store, 0x1);		 // cr_sceAttr[0]
+	kernel_copyin(ucred + 0x58, &authid_store, 0x8);	 // cr_sceAuthID
+	kernel_copyin(ucred + 0x60, &caps_store, 0x8);		 // cr_sceCaps[0]
+	kernel_copyin(ucred + 0x68, &caps_store, 0x8);		 // cr_sceCaps[1]
+	kernel_copyin(ucred + 0x83, attr_store, 0x1);		 // cr_sceAttr[0]
 }
 
 // NOLINTBEGIN
