@@ -465,6 +465,19 @@ int main()
 {
     plugin_log("=== PLUGIN LOADER v1.13 + BACKPORK ===");
 
+    // ── Kill ancienne instance si elle tourne déjà ───────────────────────
+    {
+        pid_t mypid = getpid();
+        pid_t old   = find_pid("Plugin-Loader");
+        if (old == -1) old = find_pid("plugin-loader");
+        if (old != -1 && old != mypid) {
+            plugin_log("[Init] Killing old instance (pid %d)", old);
+            kill(old, SIGKILL);
+            usleep(300000);
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
 
@@ -507,14 +520,8 @@ int main()
     printf_notification("ShadowMod+ PlLoader v1.13 FW: %x.%02x        \nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
-    // Vider les events en attente avant de commencer (cas reload du loader)
-    {
-        struct timespec zero = {0, 0};
-        struct kevent drain[16];
-        while (kevent(kq, nullptr, 0, drain, 16, &zero) > 0) {}
-    }
-
     pid_t child_pid = -1;
+    pid_t last_injected_pid = -1;
 
     // ── Main event loop ───────────────────────────────────────────────────
     while (1)
@@ -528,14 +535,13 @@ int main()
         if (ev.fflags & NOTE_CHILD)
             child_pid = (pid_t)ev.ident;
 
-        // Ignorer si c'est notre propre pid (loader forké par SceSysCore)
-        if (child_pid == getpid()) {
-            child_pid = -1;
-            continue;
-        }
-
         if ((ev.fflags & NOTE_EXEC) && child_pid != -1 && (pid_t)ev.ident == child_pid)
         {
+            if (child_pid == last_injected_pid) {
+                plugin_log("[Loop] pid %d deja injecte, skip", child_pid);
+                child_pid = -1;
+                continue;
+            }
             app_info_t appinfo{};
             if (sceKernelGetAppInfo(child_pid, &appinfo) != 0) {
                 plugin_log("sceKernelGetAppInfo failed for pid %d", child_pid);
@@ -580,6 +586,7 @@ int main()
 
                 pid_t game_pid = child_pid;
                 child_pid = -1;
+                last_injected_pid = game_pid;
                 if (fml) {
                     wait_for_pid_exit(game_pid);
                     cleanup_after_game(game_pid, sid, fml);
@@ -589,6 +596,7 @@ int main()
 
             pid_t game_pid = child_pid;
             child_pid = -1;
+            last_injected_pid = game_pid;
 
             inject_into_game(game_pid, title_id, it->second, config);
         }
