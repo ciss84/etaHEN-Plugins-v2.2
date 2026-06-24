@@ -383,14 +383,33 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
                 sceKernelPrepareToResumeProcess(pid);
                 sceKernelResumeProcess(pid);
-                
-                // Attends que le PRX se charge (~2-3 secondes)
-                sleep(3);
-                
+
+                if (stuff_addr != 0) {
+                    // PRX pas encore chargé — poll GameStuff::loaded (+0x128)
+                    plugin_log("[PLT] Polling GameStuff::loaded @ 0x%llx...", stuff_addr);
+                    constexpr int TIMEOUT_MS = 8000;
+                    constexpr int POLL_US    = 100000; // 100ms
+                    int elapsed_ms = 0;
+                    int loaded_val = 0;
+                    while (elapsed_ms < TIMEOUT_MS) {
+                        usleep(POLL_US);
+                        elapsed_ms += POLL_US / 1000;
+                        loaded_val = hijacker->read<int>(stuff_addr + 0x128);
+                        if (loaded_val != 0) break;
+                    }
+                    if (loaded_val != 0)
+                        plugin_log("[PLT] PRX loaded (loaded=%d) apres %dms", loaded_val, elapsed_ms);
+                    else
+                        plugin_log("[PLT] TIMEOUT: loaded still 0 apres %dms (FW compat?)", elapsed_ms);
+                } else {
+                    // stuff_addr == 0 => kernel_dynlib_handle a vu le PRX deja present => skip
+                    plugin_log("[PLT] stuff_addr==0 => PRX deja charge, skip poll");
+                }
+
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
                     sceKernelSuspendProcess(pid);
-                    usleep(2500000);
+                    usleep(500000);
                 }
             } else {
                 plugin_log("[PLT] FAILED to hook: %s", prx.path.c_str());
@@ -436,7 +455,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.13 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.13.1 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -477,7 +496,7 @@ int main()
         return -1;
     }
 
-    printf_notification("ShadowMod+ PlLoader v1.13 FW: %x.%02x        \nBy @84Ciss ", fw_major, fw_minor);
+    printf_notification("ShadowMod+ PlLoader v1.13.1 FW: %x.%02x        \nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
