@@ -166,8 +166,13 @@ static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
     char *mount_dst = (char *)malloc(PATH_MAX + 1);
     if  (!mount_dst) { free(random_folder); return nullptr; }
 
+    // Utiliser le sandbox du JEU (title_id + sandbox_num), pas sandbox_id du loader
+    // Sinon mount_dst est incohérent avec random_folder → double mount au 2ème lancement
+    char game_sandbox[64];
+    snprintf(game_sandbox, sizeof(game_sandbox), "%s_%03d", title_id, sandbox_num);
+
     snprintf(mount_dst, PATH_MAX + 1,
-             "/mnt/sandbox/%s/%s/common/lib", sandbox_id, random_folder);
+             "/mnt/sandbox/%s/%s/common/lib", game_sandbox, random_folder);
     free(random_folder);
 
     // ── Check si fakelib déjà monté sur mount_dst ────────────────────────
@@ -463,7 +468,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.13.2 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.13 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -504,7 +509,7 @@ int main()
         return -1;
     }
 
-    printf_notification("ShadowMod+ PlLoader v1.13.2 FW: %x.%02x        \nBy @84Ciss ", fw_major, fw_minor);
+    printf_notification("ShadowMod+ PlLoader v1.13 FW: %x.%02x        \nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
