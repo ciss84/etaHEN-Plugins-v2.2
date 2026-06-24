@@ -32,4 +32,5 @@ size_t security_flags() { return rel(KERNEL_ADDRESS_SECURITY_FLAGS); }
 size_t qa_flags()       { return rel(KERNEL_ADDRESS_QA_FLAGS); }
 size_t utoken_flags()   { return rel(KERNEL_ADDRESS_UTOKEN_FLAGS); }
 size_t root_vnode()     { return rel(KERNEL_ADDRESS_ROOTVNODE); }
+//size_t ucred_sceattr()  { return (size_t)KERNEL_OFFSET_UCRED_CR_SCEATTRS; }
 }
