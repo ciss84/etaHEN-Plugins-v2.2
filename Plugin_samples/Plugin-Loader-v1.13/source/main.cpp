@@ -95,6 +95,9 @@ static pid_t find_pid(const char *name)
 //  fakelib / unionfs helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// title_id déjà traités dans cette session → évite double mount
+static std::set<std::string> s_fakelib_mounted;
+
 static int mount_unionfs(const char *src, const char *dst)
 {
     struct iovec iov[] = {
@@ -147,6 +150,12 @@ static char *find_random_folder(const char *title_id, int sandbox_num)
 
 static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
 {
+    // Déjà monté pour ce title_id dans cette session → skip
+    if (s_fakelib_mounted.count(title_id)) {
+        plugin_log("[Fakelib] Already mounted for %s this session, skip", title_id);
+        return nullptr;
+    }
+
     char fakelib_src[PATH_MAX];
     snprintf(fakelib_src, sizeof(fakelib_src),
              "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
@@ -193,6 +202,7 @@ static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
 
     plugin_log("[Fakelib] Mounted %s -> %s", fakelib_src, mount_dst);
     printf_notification("Fakelib mounted for %s     ", title_id);
+    s_fakelib_mounted.insert(title_id);
     return mount_dst;
 }
 
@@ -261,6 +271,14 @@ static int cleanup_directory(const char *path)
 static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_mount)
 {
     if (fakelib_mount) {
+        // Extraire le title_id depuis sandbox_id (format: TITLEID_NNN)
+        char title_id_clean[32] = {};
+        const char *underscore = strrchr(sandbox_id, '_');
+        if (underscore)
+            snprintf(title_id_clean, sizeof(title_id_clean), "%.*s",
+                     (int)(underscore - sandbox_id), sandbox_id);
+        s_fakelib_mounted.erase(title_id_clean);
+
         char sandbox_app0[PATH_MAX];
         snprintf(sandbox_app0, sizeof(sandbox_app0),
                  "/mnt/sandbox/%s/app0", sandbox_id);
