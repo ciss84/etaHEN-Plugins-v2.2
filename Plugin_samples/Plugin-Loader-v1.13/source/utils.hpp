@@ -157,7 +157,6 @@ struct GameStuff {
   uint64_t game_hash = 0;             // +0x130
   int frame_delay = 300;              // +0x138
   int frame_counter = 0;              // +0x13C
-  int last_lsm_result = 0;           // +0x140
 
   GameStuff(Hijacker &hijacker) noexcept
       : debugout(hijacker.getLibKernelAddress(nid::sceKernelDebugOutText)),
@@ -171,10 +170,9 @@ static_assert(offsetof(GameStuff, loaded)                  == 0x128, "GameStuff:
 static_assert(offsetof(GameStuff, game_hash)               == 0x130, "GameStuff::game_hash offset wrong");
 static_assert(offsetof(GameStuff, frame_delay)             == 0x138, "GameStuff::frame_delay offset wrong");
 static_assert(offsetof(GameStuff, frame_counter)           == 0x13C, "GameStuff::frame_counter offset wrong");
-static_assert(offsetof(GameStuff, last_lsm_result)         == 0x140, "GameStuff::last_lsm_result offset wrong");
 
 struct GameBuilder {
-  static constexpr size_t SHELLCODE_SIZE      = 139;
+  static constexpr size_t SHELLCODE_SIZE      = 137;
   static constexpr size_t SHELLCODE_SIZE_AUTO = 210;
   static constexpr size_t EXTRA_STUFF_ADDR_OFFSET = 2;
 
@@ -243,28 +241,27 @@ static constexpr GameBuilder BUILDER_TEMPLATE {
     0x45, 0x31, 0xc9,  
     // [103-105] CALL [RBX+0x10]  = sceKernelLoadStartModule
     0xff, 0x53, 0x10,
-    // [106-111] MOV DWORD PTR [RBX+0x140], EAX  (last_lsm_result = EAX)
-    0x89, 0x83, 0x40, 0x01, 0x00, 0x00,
-    // [112-113] TEST EAX, EAX
-    0x85, 0xc0,
-    // [114-115] JS epilogue  (skip loaded=1 si sceKernelLoadStartModule < 0)
-    // offset: byte 116 → byte 126 = +10 = 0x0a
-    0x78, 0x0a,
-    // [116-125] MOV DWORD PTR [RBX+0x128], 1  (loaded = 1)
+    // [106-108] MOV RSI, RSP
+    0x48, 0x89, 0xe6,
+    // [109-110] XOR EDI, EDI
+    0x31, 0xff,
+    // [111-113] CALL [RBX+0x08]  = debugout
+    0xff, 0x53, 0x08,
+    // [114-123] MOV DWORD PTR [RBX+0x128], 1  (loaded = 1)
     0xc7, 0x83, 0x28, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
-    // [126-127] MOV EAX, EBP  (restore scePadReadState retval)  ← JS target (+12 depuis 0x78 0x0c)
+    // [124-125] MOV EAX, EBP  (restore scePadReadState retval)
     0x89, 0xe8,
-    // [128-131] ADD RSP, 24
+    // [126-129] ADD RSP, 24
     0x48, 0x83, 0xc4, 0x18,
-    // [132]     POP RBX
+    // [130]     POP RBX
     0x5b,
-    // [133-134] POP R14
+    // [131-132] POP R14
     0x41, 0x5e,
-    // [135-136] POP R15
+    // [133-134] POP R15
     0x41, 0x5f,
-    // [137]     POP RBP
+    // [135]     POP RBP
     0x5d,
-    // [138]     RET  — SHELLCODE_SIZE = 139 bytes (indices 0-138)
+    // [136]     RET
     0xc3
 };
 
