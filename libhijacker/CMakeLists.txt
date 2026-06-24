@@ -59,10 +59,14 @@ target_compile_options(${PROJECT_NAME} PUBLIC
 
 message("========== build: ${PROJECT_NAME} ==========")
 
+
+
 set(CMAKE_C_FLAGS "--target=x86_64-sie-ps5 -march=znver2 -DPPR -DPS5 -DPS5_FW_VERSION=${V_FW} ")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC  -fstack-protector-all")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -O3 -march=znver2 -Wall -Wextra -Wmove -Wmost -Werror -fno-exceptions")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g0 -O0")
+add_dependencies(${PROJECT_NAME} NidResolver)
 target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../include")
 target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../libNidResolver/include")
+target_link_libraries(${PROJECT_NAME} libNidResolver.a )
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
