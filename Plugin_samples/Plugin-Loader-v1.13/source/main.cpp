@@ -96,7 +96,7 @@ static pid_t find_pid(const char *name)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // title_id déjà traités dans cette session → évite double mount
-static std::set<std::string> s_fakelib_mounted;
+static std::set<std::string, std::less<std::string>, std::allocator<std::string>> s_fakelib_mounted;
 
 static int mount_unionfs(const char *src, const char *dst)
 {
