@@ -73,7 +73,7 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 	return td->getFrame();
 }
 
-/*void Hijacker::jailbreak(bool escapeSandbox) const {
+void Hijacker::jailbreak(bool escapeSandbox) const {
     auto proc = getProc();
     if (!proc) return;
 
@@ -94,54 +94,6 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
     static constexpr uint64_t SCEATTRVAL = 0x4800000000000003ULL;
     kernel_copyin(&SCEATTRVAL, ucred + sceattr_off, sizeof(SCEATTRVAL));
 
-    // Escape sandbox via root vnode
-    if (escapeSandbox) {
-        uintptr_t fd = proc->p_fd();
-        if (fd) {
-            uintptr_t root_vn = 0;
-            kernel_copyout(
-                (uintptr_t)kernel_base + offsets::root_vnode(),
-                &root_vn, sizeof(root_vn)
-            );
-            if (root_vn) {
-                kernel_copyin(&root_vn, fd + 0x10, sizeof(root_vn)); // fd_jdir
-                kernel_copyin(&root_vn, fd + 0x18, sizeof(root_vn)); // fd_rdir
-            }
-        }
-    }
-}*/
-
-void Hijacker::jailbreak(bool escapeSandbox) const {
-    auto proc = getProc();
-    if (!proc) return;
-
-    uintptr_t ucred = proc->p_ucred();
-    if (!ucred) return;
-    
-	  int uid = -1;
-	  kernel_copyout(ucred + 0x04, &uid, 0x4);
-	  if(uid == 0 && !escapeSandbox){
-		  puts("already jailbroken");
-		  return;
-	  }
-    // Root uid/gid
-    static constexpr uint32_t ROOT = 0;
-    kernel_copyin(&ROOT, ucred + 0x04, sizeof(ROOT)); // uid
-    kernel_copyin(&ROOT, ucred + 0x08, sizeof(ROOT)); // ruid
-    kernel_copyin(&ROOT, ucred + 0x0c, sizeof(ROOT)); // svuid
-    kernel_copyin(&ROOT, ucred + 0x10, sizeof(ROOT)); // gid
-    kernel_copyin(&ROOT, ucred + 0x14, sizeof(ROOT)); // rgid
-
-    // Sony auth / capability flags
-    size_t sceattr_off = offsets::ucred_sceattr();
-    static constexpr uint64_t SCEATTRVAL = 0x4801000000000013l;
-    int64_t caps_store = -1;
-	  uint8_t attr_store[] = {0x80, 0, 0, 0, 0, 0, 0, 0};
-    kernel_copyin(&SCEATTRVAL, ucred + sceattr_off, sizeof(SCEATTRVAL));
-	  kernel_copyin(&caps_store, ucred + 0x60, 0x8);		 // cr_sceCaps[0]
-	  kernel_copyin(&caps_store, ucred + 0x68, 0x8);		 // cr_sceCaps[1]	  
-	  kernel_copyin(&attr_store, ucred + 0x83, 0x1);		 // cr_sceAttr[0]	
-	  
     // Escape sandbox via root vnode
     if (escapeSandbox) {
         uintptr_t fd = proc->p_fd();
