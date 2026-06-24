@@ -147,12 +147,6 @@ static char *find_random_folder(const char *title_id, int sandbox_num)
 
 static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
 {
-    static bool s_mounted = false;
-    if (s_mounted) {
-        plugin_log("[Fakelib] Already mounted this session, skip");
-        return nullptr;
-    }
-
     char fakelib_src[PATH_MAX];
     snprintf(fakelib_src, sizeof(fakelib_src),
              "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
@@ -194,7 +188,6 @@ static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
 
     plugin_log("[Fakelib] Mounted %s -> %s", fakelib_src, mount_dst);
     printf_notification("Fakelib mounted for %s     ", title_id);
-    s_mounted = true;
     return mount_dst;
 }
 
@@ -514,6 +507,13 @@ int main()
     printf_notification("ShadowMod+ PlLoader v1.13 FW: %x.%02x        \nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
+    // Vider les events en attente avant de commencer (cas reload du loader)
+    {
+        struct timespec zero = {0, 0};
+        struct kevent drain[16];
+        while (kevent(kq, nullptr, 0, drain, 16, &zero) > 0) {}
+    }
+
     pid_t child_pid = -1;
 
     // ── Main event loop ───────────────────────────────────────────────────
@@ -527,6 +527,12 @@ int main()
 
         if (ev.fflags & NOTE_CHILD)
             child_pid = (pid_t)ev.ident;
+
+        // Ignorer si c'est notre propre pid (loader forké par SceSysCore)
+        if (child_pid == getpid()) {
+            child_pid = -1;
+            continue;
+        }
 
         if ((ev.fflags & NOTE_EXEC) && child_pid != -1 && (pid_t)ev.ident == child_pid)
         {
