@@ -78,41 +78,41 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 }
 
 void Hijacker::jailbreak(bool escapeSandbox) const {
-    auto proc = getProc();
-    if (!proc) return;
+	auto p = getProc();
+	uintptr_t ucred = p->p_ucred();
+	uintptr_t fd = p->p_fd();
+	int uid = -1;
+	kernel_copyout(ucred + 0x04, &uid, 0x4);
+	if(uid == 0 && !escapeSandbox){
+		puts("already jailbroken");
+		return;
+	}
+	UniquePtr<uint8_t[]> rootvnode_area_store{new uint8_t[0x100]};
+	kernel_copyout(kernel_base + offsets::root_vnode(), rootvnode_area_store.get(), 0x100);
+	uint32_t uid_store = 0;
+	uint32_t ngroups_store = 0;
+	uint64_t authid_store = 0x4801000000000013l;
+	int64_t caps_store = -1;
+	uint8_t attr_store[] = {0x80, 0, 0, 0, 0, 0, 0, 0};
 
-    uintptr_t ucred = proc->p_ucred();
-    if (!ucred) return;
+	copyin(ucred + 0x04, &uid_store, 0x4);		  // cr_uid
+	copyin(ucred + 0x08, &uid_store, 0x4);		  // cr_ruid
+	copyin(ucred + 0x0C, &uid_store, 0x4);		  // cr_svuid
+	
+	copyin(ucred + 0x10, &ngroups_store, 0x4);	  // cr_ngroups
+	copyin(ucred + 0x14, &uid_store, 0x4);		  // cr_rgid
 
-    // Root uid/gid
-    static constexpr uint32_t ROOT = 0;
-    kernel_copyin(&ROOT, ucred + 0x04, sizeof(ROOT)); // uid
-    kernel_copyin(&ROOT, ucred + 0x08, sizeof(ROOT)); // ruid
-    kernel_copyin(&ROOT, ucred + 0x0c, sizeof(ROOT)); // svuid
-    kernel_copyin(&ROOT, ucred + 0x10, sizeof(ROOT)); // gid
-    kernel_copyin(&ROOT, ucred + 0x14, sizeof(ROOT)); // rgid
-    kernel_copyin(&ROOT, ucred + 0x18, sizeof(ROOT)); // svgid
+	if (escapeSandbox) {
+		// Escape sandbox
+		copyin(fd + 0x10, rootvnode_area_store.get(), 0x8);  // fd_rdir
+		copyin(fd + 0x18, rootvnode_area_store.get(), 0x8);  // fd_jdir
+	}
 
-    // Sony auth / capability flags
-    size_t sceattr_off = offsets::ucred_sceattr();
-    static constexpr uint64_t SCEATTRVAL = 0x4800000000000003ULL;
-    kernel_copyin(&SCEATTRVAL, ucred + sceattr_off, sizeof(SCEATTRVAL));
-
-    // Escape sandbox via root vnode
-    if (escapeSandbox) {
-        uintptr_t fd = proc->p_fd();
-        if (fd) {
-            uintptr_t root_vn = 0;
-            kernel_copyout(
-                (uintptr_t)kernel_base + offsets::root_vnode(),
-                &root_vn, sizeof(root_vn)
-            );
-            if (root_vn) {
-                kernel_copyin(&root_vn, fd + 0x10, sizeof(root_vn)); // fd_jdir
-                kernel_copyin(&root_vn, fd + 0x18, sizeof(root_vn)); // fd_rdir
-            }
-        }
-    }
+	// Escalate sony privileges
+	copyin(ucred + 0x58, &authid_store, 0x8);	 // cr_sceAuthID
+	copyin(ucred + 0x60, &caps_store, 0x8);		 // cr_sceCaps[0]
+	copyin(ucred + 0x68, &caps_store, 0x8);		 // cr_sceCaps[1]
+	copyin(ucred + 0x83, attr_store, 0x1);		 // cr_sceAttr[0]
 }
 
 // NOLINTBEGIN
