@@ -205,7 +205,7 @@ static bool patch_shellcore_for_data()
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
-        break;
+        break;  
     default:
         plugin_log("[SC_PATCH] FW 0x%08x non supportee, skip", fw_masked);
         free(copy);
