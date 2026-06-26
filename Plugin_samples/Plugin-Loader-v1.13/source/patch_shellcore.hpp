@@ -4,13 +4,24 @@
 //  patch_shellcore.hpp — active /data en sandbox sans etaHEN
 //  Porté depuis etaHEN (cpp_service.cpp / util daemon)
 //  A inclure/appeler UNE SEULE FOIS au démarrage de Plugin-Loader
+//  NOTE: ne pas inclure utils.hpp ici (pas de include guard dessus)
+//        On utilise directement les headers système + hijacker
 // ─────────────────────────────────────────────────────────────────────────────
 
-#include "utils.hpp"       // Hijacker, UniquePtr, plugin_log
-#include <ps5/kernel.h>    // kernel_get_fw_version
-#include <string.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
+#include <unistd.h>
+#include "hijacker/hijacker.hpp"
+#include "dbg/dbg.hpp"
+
+// plugin_log est défini dans utils.cpp, déclaration externe
+extern void plugin_log(const char* fmt, ...);
+
+// kernel_get_fw_version depuis ps5/kernel.h (déjà inclus dans main.cpp avant nous)
+extern "C" uint32_t kernel_get_fw_version();
 
 // ── Firmware version constants ────────────────────────────────────────────────
 static constexpr uint32_t SC_VERSION_MASK = 0xffff0000;
@@ -56,7 +67,7 @@ static int sc_pattern_to_byte(const char *sig, uint8_t *out)
         while (*p == ' ') p++;
         if (!*p) break;
         if (p[0] == '?' && (p[1] == '?' || p[1] == ' ' || !p[1])) {
-            out[len++] = 0xff; // wildcard
+            out[len++] = 0xff;
             p += (p[1] == '?') ? 2 : 1;
         } else {
             auto hex = [](char c) -> uint8_t {
@@ -78,7 +89,7 @@ static uint8_t *sc_pattern_scan(const uint8_t *base, uint64_t size, const char *
     int plen = sc_pattern_to_byte(sig, pat);
     if (plen <= 0) return nullptr;
 
-    for (uint64_t i = 0; i + plen <= size; i++) {
+    for (uint64_t i = 0; i + (uint64_t)plen <= size; i++) {
         bool ok = true;
         for (int j = 0; j < plen; j++) {
             if (pat[j] != 0xff && base[i + j] != pat[j]) { ok = false; break; }
@@ -96,7 +107,6 @@ static void sc_write_hex(pid_t pid, uint64_t addr, const char *hex)
     dbg::write(pid, addr, buf, len);
 }
 
-// ── Trouve SceShellCore (même logique que find_pid dans main.cpp) ─────────────
 static pid_t sc_find_shellcore_pid()
 {
     int      mib[4] = {1, 14, 8, 0};
@@ -119,11 +129,6 @@ static pid_t sc_find_shellcore_pid()
     return pid;
 }
 
-// ── Fonction principale ───────────────────────────────────────────────────────
-//
-//  Appelle une seule fois au démarrage, APRES payload_get_args() / kernel_base.
-//  Retourne true si le patch a réussi.
-//
 static bool patch_shellcore_for_data()
 {
     uint32_t fw = kernel_get_fw_version();
@@ -161,7 +166,6 @@ static bool patch_shellcore_for_data()
         return false;
     }
 
-    // Sélection des patterns selon la FW
     const char *pat1 = nullptr, *pat2 = nullptr, *pat_checker = nullptr;
 
     switch (fw_masked) {
@@ -208,9 +212,9 @@ static bool patch_shellcore_for_data()
         return false;
     }
 
-    uint8_t *found1   = sc_pattern_scan(copy, sc_size, pat1);
-    uint8_t *found2   = sc_pattern_scan(copy, sc_size, pat2);
-    uint8_t *checker  = sc_pattern_scan(copy, sc_size, pat_checker);
+    uint8_t *found1  = sc_pattern_scan(copy, sc_size, pat1);
+    uint8_t *found2  = sc_pattern_scan(copy, sc_size, pat2);
+    uint8_t *checker = sc_pattern_scan(copy, sc_size, pat_checker);
 
     plugin_log("[SC_PATCH] found1=%p found2=%p checker=%p", found1, found2, checker);
 
@@ -219,7 +223,6 @@ static bool patch_shellcore_for_data()
     if (found1 && found2) {
         uint64_t off1 = sc_base + (uint64_t)(found1 - copy);
         uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
-        // MOV EAX, 1  (b8 01 00 00 00)
         sc_write_hex(sc_pid, off1, "b8 01 00 00 00");
         sc_write_hex(sc_pid, off2, "b8 01 00 00 00");
         plugin_log("[SC_PATCH] patched data1=0x%llx data2=0x%llx", off1, off2);
@@ -232,11 +235,10 @@ static bool patch_shellcore_for_data()
 
     if (checker) {
         uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
-        // push rbp / mov rbp,rsp / mov eax,0x80261814 / pop rbp / ret
         sc_write_hex(sc_pid, off_chk, "55 48 89 e5 b8 14 18 26 80 5d c3");
         plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
     } else {
-        plugin_log("[SC_PATCH] checker pattern non trouve (non fatal)");
+        plugin_log("[SC_PATCH] checker non trouve (non fatal)");
     }
 
     free(copy);
