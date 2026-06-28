@@ -1,3 +1,4 @@
+#include "patch_shellcore.hpp"
 #include "hijacker.hpp"
 #include "offsets.hpp"
 #include "util.hpp"
@@ -110,6 +111,8 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
             }
         }
     }
+    // Patch SceShellCore pour activer /data en sandbox
+    patch_shellcore_for_data();
 }
 
 // NOLINTBEGIN
