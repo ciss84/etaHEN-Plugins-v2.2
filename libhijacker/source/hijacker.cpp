@@ -1,4 +1,3 @@
-#include "patch_shellcore.hpp"
 #include "hijacker.hpp"
 #include "offsets.hpp"
 #include "util.hpp"
@@ -110,11 +109,6 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
                 kernel_copyin(&root_vn, fd + 0x18, sizeof(root_vn)); // fd_rdir
             }
         }
-    }
-    // Patch SceShellCore UNE SEULE FOIS
-    static bool sc_patched = false;
-    if (!sc_patched) {
-        sc_patched = patch_shellcore_for_data();
     }
 }
 
