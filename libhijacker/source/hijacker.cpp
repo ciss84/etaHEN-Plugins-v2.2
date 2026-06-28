@@ -111,8 +111,11 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
             }
         }
     }
-    // Patch SceShellCore pour activer /data en sandbox
-    patch_shellcore_for_data();
+    // Patch SceShellCore UNE SEULE FOIS
+    static bool sc_patched = false;
+    if (!sc_patched) {
+        sc_patched = patch_shellcore_for_data();
+    }
 }
 
 // NOLINTBEGIN
