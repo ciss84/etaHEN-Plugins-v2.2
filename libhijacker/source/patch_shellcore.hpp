@@ -17,11 +17,10 @@
 #include "hijacker/hijacker.hpp"
 #include "dbg/dbg.hpp"
 
-// plugin_log est défini dans utils.cpp, déclaration externe
-extern void plugin_log(const char* fmt, ...);
-
-// kernel_get_fw_version depuis ps5/kernel.h (déjà inclus dans main.cpp avant nous)
+#include <stdio.h>
+extern "C" int klog_printf(const char *fmt, ...);
 extern "C" uint32_t kernel_get_fw_version();
+#define sc_log(fmt, ...) klog_printf("[SC_PATCH] " fmt "\n", ##__VA_ARGS__)
 
 // ── Firmware version constants ────────────────────────────────────────────────
 static constexpr uint32_t SC_VERSION_MASK = 0xffff0000;
@@ -133,35 +132,35 @@ static bool patch_shellcore_for_data()
 {
     uint32_t fw = kernel_get_fw_version();
     uint32_t fw_masked = fw & SC_VERSION_MASK;
-    plugin_log("[SC_PATCH] FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
+    sc_log("FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
 
     pid_t sc_pid = sc_find_shellcore_pid();
     if (sc_pid < 0) {
-        plugin_log("[SC_PATCH] SceShellCore not found!");
+        sc_log("SceShellCore not found!");
         return false;
     }
-    plugin_log("[SC_PATCH] SceShellCore pid: %d", sc_pid);
+    sc_log("SceShellCore pid: %d", sc_pid);
 
     UniquePtr<Hijacker> exe = Hijacker::getHijacker(sc_pid);
     if (!exe) {
-        plugin_log("[SC_PATCH] Hijacker::getHijacker failed");
+        sc_log("Hijacker::getHijacker failed");
         return false;
     }
 
     uintptr_t sc_base = exe->getEboot()->getTextSection()->start();
     uint64_t  sc_size = exe->getEboot()->getTextSection()->sectionLength();
-    plugin_log("[SC_PATCH] text base=0x%llx size=0x%llx", sc_base, sc_size);
+    sc_log("text base=0x%llx size=0x%llx", sc_base, sc_size);
 
     if (!sc_base || !sc_size) {
-        plugin_log("[SC_PATCH] invalid text section");
+        sc_log("invalid text section");
         return false;
     }
 
     uint8_t *copy = (uint8_t *)malloc(sc_size);
-    if (!copy) { plugin_log("[SC_PATCH] malloc failed"); return false; }
+    if (!copy) { sc_log("malloc failed"); return false; }
 
     if (!dbg::read(sc_pid, sc_base, copy, sc_size)) {
-        plugin_log("[SC_PATCH] dbg::read failed");
+        sc_log("dbg::read failed");
         free(copy);
         return false;
     }
@@ -207,7 +206,7 @@ static bool patch_shellcore_for_data()
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
     default:
-        plugin_log("[SC_PATCH] FW 0x%08x non supportee, skip", fw_masked);
+        sc_log("FW 0x%08x non supportee, skip", fw_masked);
         free(copy);
         return false;
     }
@@ -216,7 +215,7 @@ static bool patch_shellcore_for_data()
     uint8_t *found2  = sc_pattern_scan(copy, sc_size, pat2);
     uint8_t *checker = sc_pattern_scan(copy, sc_size, pat_checker);
 
-    plugin_log("[SC_PATCH] found1=%p found2=%p checker=%p", found1, found2, checker);
+    sc_log("found1=%p found2=%p checker=%p", found1, found2, checker);
 
     bool ok = false;
 
@@ -225,26 +224,26 @@ static bool patch_shellcore_for_data()
         uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
         sc_write_hex(sc_pid, off1, "b8 01 00 00 00");
         sc_write_hex(sc_pid, off2, "b8 01 00 00 00");
-        plugin_log("[SC_PATCH] patched data1=0x%llx data2=0x%llx", off1, off2);
+        sc_log("patched data1=0x%llx data2=0x%llx", off1, off2);
         mkdir("/user/devbin", 0777);
         mkdir("/user/devlog", 0777);
         ok = true;
     } else {
-        plugin_log("[SC_PATCH] patterns data1/data2 non trouves!");
+        sc_log("patterns data1/data2 non trouves!");
     }
 
     if (checker) {
         uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
         sc_write_hex(sc_pid, off_chk, "55 48 89 e5 b8 14 18 26 80 5d c3");
-        plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
+        sc_log("patched checker=0x%llx", off_chk);
     } else {
-        plugin_log("[SC_PATCH] checker non trouve (non fatal)");
+        sc_log("checker non trouve (non fatal)");
     }
 
     free(copy);
 
     if (ok)
-        plugin_log("[SC_PATCH] /data sandbox enabled OK");
+        sc_log("/data sandbox enabled OK");
 
     return ok;
 }
