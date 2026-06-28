@@ -1,5 +1,4 @@
 #include "utils.hpp"
-#include "patch_shellcore.hpp"
 #include <notify.hpp>
 #include <signal.h>
 #include <string>
@@ -481,12 +480,6 @@ int main()
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
-
-    // Active /data en sandbox (remplace etaHEN)
-    if (patch_shellcore_for_data())
-        plugin_log("[Init] Data sandbox enabled OK");
-    else
-        plugin_log("[Init] Data sandbox FAILED");
 
     // ── FW detection ─────────────────────────────────────────────────────
     uint32_t fw = kernel_get_fw_version();
