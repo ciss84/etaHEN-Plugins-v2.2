@@ -448,6 +448,12 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
+    // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
+    if (!patch_shellcore_for_data()) {
+        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
