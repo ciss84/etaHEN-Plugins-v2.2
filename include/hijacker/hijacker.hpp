@@ -2,7 +2,6 @@
 
 #include "dbg.hpp"
 #include "hijacker/allocator.hpp"
-#include "patch_shellcore.hpp"
 #include "memory.hpp"
 #include "kernel.hpp"
 #include "kernel/rtld.hpp"
