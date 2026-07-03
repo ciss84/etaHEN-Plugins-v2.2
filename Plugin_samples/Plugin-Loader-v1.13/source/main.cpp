@@ -441,6 +441,13 @@ int main()
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
 
+    // -- FW detection -----------------------------------------------------
+    uint32_t fw = kernel_get_fw_version();
+    uint32_t fw_major = (fw >> 24) & 0xFF;
+    uint32_t fw_minor = (fw >> 16) & 0xFF;
+    plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
+    // ---------------------------------------------------------------------
+
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
@@ -470,7 +477,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Plugin Loader v1.13.2: started     \nBy @84Ciss ");
+    //printf_notification("ShadowMod Plugin Loader v1.13.2: started     \nBy @84Ciss ");
+    printf_notification("ShadowMod+ Loader v1.13.2: started           \nMod By @84Ciss \nFW: %x.%02x     ", fw_major, fw_minor);  
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
