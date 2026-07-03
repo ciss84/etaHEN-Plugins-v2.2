@@ -4,8 +4,7 @@ Rebuild Helper pour GTRDLoader
 Compile le shellcode et extrait les bytes automatiquement
 """
 
-import subprocess 
-
+import subprocess
 import sys
 import os
 import re
@@ -36,7 +35,7 @@ class ShellcodeBuilder:
         print(f"Command: {' '.join(cmd)}")
         
         try:
-            result = subprocess.run(["ls", "-l"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             print(f"✅ Compilation successful: {output_file}")
             return True
         except subprocess.CalledProcessError as e:
@@ -52,7 +51,7 @@ class ShellcodeBuilder:
         cmd = ["objdump", "-d", obj_file]
         
         try:
-            result = subprocess.run(["ls", "-l"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
             
             # Parser la sortie pour extraire les bytes
             bytes_data = []
