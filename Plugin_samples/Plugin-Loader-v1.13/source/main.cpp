@@ -1,5 +1,5 @@
 #include "utils.hpp"
-#include "patch_shellcore.hpp"
+#include "hijacker/patch_shellcore.hpp"
 #include <notify.hpp>
 #include <signal.h>
 #include <string>

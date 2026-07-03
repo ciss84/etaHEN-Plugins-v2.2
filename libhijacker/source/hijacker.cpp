@@ -16,6 +16,7 @@ extern "C" {
 #include <ps5/payload.h>
 #include <ps5/kernel.h>
 #include <notify.hpp>
+#include "patch_shellcore.hpp"
 
 int klog_printf(const char *fmt, ...);
 int sceNotificationSend(int userId, bool isLogged, const char *payload);

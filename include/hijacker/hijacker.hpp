@@ -2,13 +2,13 @@
 
 #include "dbg.hpp"
 #include "hijacker/allocator.hpp"
+#include "patch_shellcore.hpp"
 #include "memory.hpp"
 #include "kernel.hpp"
 #include "kernel/rtld.hpp"
 #include "util.hpp"
 #include "allocator.hpp"
 #include <sys/_stdint.h>
-
 class Hijacker {
 	
 #ifndef LIBKERNEL_HANDLE
