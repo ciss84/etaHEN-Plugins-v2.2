@@ -436,10 +436,23 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.12.8 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.12.9 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
+
+    // ── FW detection ─────────────────────────────────────────────────────
+    uint32_t fw = kernel_get_fw_version();
+    uint32_t fw_major = (fw >> 24) & 0xFF;
+    uint32_t fw_minor = (fw >> 16) & 0xFF;
+    plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
+    // ─────────────────────────────────────────────────────────────────────
+
+    // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
+    if (!patch_shellcore_for_data()) {
+        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    }
+    // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
@@ -470,7 +483,9 @@ int main()
         return -1;
     }
 
-    printf_notification("Plugin Loader v1.12.8: started     \nBy @84Ciss ");
+    //printf_notification("Plugin Loader v1.12.8: started     \nBy @84Ciss ");
+    printf_notification("Prx-Loader FW: %x.%02x             \nVer:1.12.9 By @84Ciss ", fw_major, fw_minor);
+
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
