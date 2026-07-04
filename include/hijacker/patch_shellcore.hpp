@@ -131,8 +131,13 @@ static pid_t sc_find_shellcore_pid()
     return pid;
 }
 
-static bool patch_shellcore_for_data()
+static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
 {
+    if (!allow_ftp_dev_access) {
+        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS disabled, skipping patch");
+        return false;
+    }
+
     static bool done = false;
     if (done) return true;
     uint32_t fw = kernel_get_fw_version();
