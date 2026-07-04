@@ -26,9 +26,9 @@ int sceNotificationSend(int userId, bool isLogged, const char *payload);
 #define JB_FILE_RELPATH  "/download0/etahen_jailbreak"
 #define POLL_INTERVAL_US (250 * 1000)
 
-/*static inline void copyin(uintptr_t kdst, const void *src, size_t length) {
+static inline void copyin(uintptr_t kdst, const void *src, size_t length) {
 	kernel_copyin(const_cast<void *>(src), kdst, length);
-}*/
+}
 
 UniquePtr<Hijacker> Hijacker::getHijacker(const StringView &processName) {
 	UniquePtr<SharedObject> obj = nullptr;
@@ -77,7 +77,7 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
 	return td->getFrame();
 }
 
-void Hijacker::jailbreak(bool escapeSandbox) const {
+/*void Hijacker::jailbreak(bool escapeSandbox) const {
     auto proc = getProc();
     if (!proc) return;
 
@@ -113,9 +113,9 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
             }
         }
     }
-}
+}*/
 
-/*void Hijacker::jailbreak(bool escapeSandbox) const {
+void Hijacker::jailbreak(bool escapeSandbox) const {
 	auto p = getProc();
 	uintptr_t ucred = p->p_ucred();
 	uintptr_t fd = p->p_fd();
@@ -151,7 +151,7 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 	copyin(ucred + 0x60, &caps_store, 0x8);		 // cr_sceCaps[0]
 	copyin(ucred + 0x68, &caps_store, 0x8);		 // cr_sceCaps[1]
 	copyin(ucred + 0x83, attr_store, 0x1);		 // cr_sceAttr[0]
-}*/
+}
 
 // NOLINTBEGIN
 //
