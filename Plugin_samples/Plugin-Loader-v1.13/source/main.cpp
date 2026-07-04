@@ -293,7 +293,7 @@ static bool resolve_sandbox_id(const char *title_id, char *sandbox_id, size_t sa
     for (int attempt = 0; attempt < 20 && sandbox_num < 0; attempt++) {
         sandbox_num = find_highest_sandbox_number(title_id);
         if (sandbox_num < 0)
-            usleep(50000);
+            usleep(100000);
     }
 
     if (sandbox_num < 0) {
@@ -452,8 +452,9 @@ int main()
     if (!patch_shellcore_for_data()) {
         plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
     }
+    usleep(50000);
     // ─────────────────────────────────────────────────────────────────────
-
+    
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
