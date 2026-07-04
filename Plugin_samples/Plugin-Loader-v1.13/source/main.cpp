@@ -484,7 +484,7 @@ int main()
         return -1;
     }
 
-    printf_notification("ShadowMod+ PRXLoader v1.13.2 FW: %x.%02x\nBy @84Ciss ", fw_major, fw_minor);
+    printf_notification("PRX-Loader v1.13.2 FW: %x.%02x\nBy @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;

@@ -109,6 +109,18 @@ static void sc_write_hex(pid_t pid, uint64_t addr, const char *hex)
     dbg::write(pid, addr, buf, len);
 }
 
+// Compare les bytes déjà présents en mémoire (copie locale "copy") avec le
+// pattern hex attendu (ex: "b8 01 00 00 00"). Retourne true si ça matche déjà,
+// ce qui signifie que le patch a déjà été appliqué (par un run précédent,
+// par etaHEN, ou autre) et qu'il n'y a pas besoin de réécrire.
+static bool sc_bytes_already_patched(const uint8_t *at, const char *expected_hex)
+{
+    uint8_t expected[64];
+    int len = sc_pattern_to_byte(expected_hex, expected);
+    if (len <= 0 || !at) return false;
+    return memcmp(at, expected, len) == 0;
+}
+
 static pid_t sc_find_shellcore_pid()
 {
     int      mib[4] = {1, 14, 8, 0};
@@ -131,8 +143,12 @@ static pid_t sc_find_shellcore_pid()
     return pid;
 }
 
-static bool patch_shellcore_for_data()
+static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
 {
+    if (!allow_ftp_dev_access) {
+        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS disabled, skipping patch");
+        return false;
+    }
     static bool done = false;
     if (done) return true;
     uint32_t fw = kernel_get_fw_version();
@@ -223,24 +239,39 @@ static bool patch_shellcore_for_data()
     plugin_log("[SC_PATCH] found1=%p found2=%p checker=%p", found1, found2, checker);
 
     bool ok = false;
+    static constexpr const char *PATCH_BYTES = "b8 01 00 00 00";
+    static constexpr const char *CHECKER_PATCH_BYTES = "55 48 89 e5 b8 14 18 26 80 5d c3";
 
     if (found1 && found2) {
-        uint64_t off1 = sc_base + (uint64_t)(found1 - copy);
-        uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
-        sc_write_hex(sc_pid, off1, "b8 01 00 00 00");
-        sc_write_hex(sc_pid, off2, "b8 01 00 00 00");
-        plugin_log("[SC_PATCH] patched data1=0x%llx data2=0x%llx", off1, off2);
-        mkdir("/user/devbin", 0777);
-        mkdir("/user/devlog", 0777);
-        ok = true;
+        bool already1 = sc_bytes_already_patched(found1, PATCH_BYTES);
+        bool already2 = sc_bytes_already_patched(found2, PATCH_BYTES);
+
+        if (already1 && already2) {
+            plugin_log("[SC_PATCH] data1/data2 deja actifs, skip ecriture");
+            ok = true;
+        } else {
+            uint64_t off1 = sc_base + (uint64_t)(found1 - copy);
+            uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
+            if (!already1) sc_write_hex(sc_pid, off1, PATCH_BYTES);
+            if (!already2) sc_write_hex(sc_pid, off2, PATCH_BYTES);
+            plugin_log("[SC_PATCH] patched data1=0x%llx (deja_actif=%d) data2=0x%llx (deja_actif=%d)",
+                       off1, already1, off2, already2);
+            mkdir("/user/devbin", 0777);
+            mkdir("/user/devlog", 0777);
+            ok = true;
+        }
     } else {
         plugin_log("[SC_PATCH] patterns data1/data2 non trouves!");
     }
 
     if (checker) {
-        uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
-        sc_write_hex(sc_pid, off_chk, "55 48 89 e5 b8 14 18 26 80 5d c3");
-        plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
+        if (sc_bytes_already_patched(checker, CHECKER_PATCH_BYTES)) {
+            plugin_log("[SC_PATCH] checker deja actif, skip ecriture");
+        } else {
+            uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
+            sc_write_hex(sc_pid, off_chk, CHECKER_PATCH_BYTES);
+            plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
+        }
     } else {
         plugin_log("[SC_PATCH] checker non trouve (non fatal)");
     }
