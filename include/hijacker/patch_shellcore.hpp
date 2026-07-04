@@ -59,56 +59,6 @@ static constexpr uint32_t SC_V761  = 0x7610000;
 static constexpr uint32_t SC_V800  = 0x8000000;
 static constexpr uint32_t SC_V820  = 0x8200000;
 
-// ── ALLOW_FTP_DEV_ACCESS (lecture directe de config.ini, sans ini_parser) ─────
-//  Plugin-Loader n'a pas d'IniParser comme etaHEN, donc parsing minimal maison.
-//  Lit [Settings] / ALLOW_FTP_DEV_ACCESS = 0 ou 1 dans /data/etaHEN/config.ini
-
-static bool sc_read_ftp_dev_access_flag()
-{
-    FILE *f = fopen("/data/etaHEN/config.ini", "r");
-    if (!f) {
-        plugin_log("[SC_PATCH] config.ini introuvable, ALLOW_FTP_DEV_ACCESS=0");
-        return false;
-    }
-
-    char line[256];
-    bool in_settings = false;
-    bool result = false;
-
-    while (fgets(line, sizeof(line), f)) {
-        char *p = line;
-        while (*p == ' ' || *p == '\t') p++;
-
-        size_t len = strlen(p);
-        while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r' || p[len - 1] == ' '))
-            p[--len] = '\0';
-
-        if (!*p) continue;
-
-        if (p[0] == '[') {
-            in_settings = (strncasecmp(p, "[Settings]", 10) == 0);
-            continue;
-        }
-
-        if (!in_settings || p[0] == ';' || p[0] == '#') continue;
-
-        char *eq = strchr(p, '=');
-        if (!eq) continue;
-        *eq = '\0';
-        char *key = p;
-        char *val = eq + 1;
-        while (*val == ' ' || *val == '\t') val++;
-
-        if (!strcasecmp(key, "ALLOW_FTP_DEV_ACCESS")) {
-            result = (atoi(val) != 0);
-            break;
-        }
-    }
-
-    fclose(f);
-    return result;
-}
-
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
 static int sc_pattern_to_byte(const char *sig, uint8_t *out)
@@ -303,17 +253,4 @@ static bool patch_shellcore_for_data()
     }
 
     return ok;
-}
-
-// Appelle patch_shellcore_for_data() UNIQUEMENT si ALLOW_FTP_DEV_ACCESS=1
-// dans config.ini. A appeler au demarrage de Plugin-Loader (main()).
-static bool patch_shellcore_if_ftp_dev_access()
-{
-    if (!sc_read_ftp_dev_access_flag()) {
-        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS desactive, skip patch");
-        return false;
-    }
-
-    plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS active, patching shellcore...");
-    return patch_shellcore_for_data();
 }
