@@ -109,19 +109,6 @@ static bool sc_read_ftp_dev_access_flag()
     return result;
 }
 
-// Appelle patch_shellcore_for_data() UNIQUEMENT si ALLOW_FTP_DEV_ACCESS=1
-// dans config.ini. A appeler au demarrage de Plugin-Loader (main()).
-static bool patch_shellcore_if_ftp_dev_access()
-{
-    if (!sc_read_ftp_dev_access_flag()) {
-        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS desactive, skip patch");
-        return false;
-    }
-
-    plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS active, patching shellcore...");
-    return patch_shellcore_for_data();
-}
-
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
 static int sc_pattern_to_byte(const char *sig, uint8_t *out)
@@ -316,4 +303,17 @@ static bool patch_shellcore_for_data()
     }
 
     return ok;
+}
+
+// Appelle patch_shellcore_for_data() UNIQUEMENT si ALLOW_FTP_DEV_ACCESS=1
+// dans config.ini. A appeler au demarrage de Plugin-Loader (main()).
+static bool patch_shellcore_if_ftp_dev_access()
+{
+    if (!sc_read_ftp_dev_access_flag()) {
+        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS desactive, skip patch");
+        return false;
+    }
+
+    plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS active, patching shellcore...");
+    return patch_shellcore_for_data();
 }
