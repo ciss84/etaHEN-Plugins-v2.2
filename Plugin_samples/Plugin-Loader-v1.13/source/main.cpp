@@ -452,7 +452,7 @@ int main()
     if (!patch_shellcore_for_data()) {
         plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
     }
-    usleep(50000);
+    usleep(100000);
     // ─────────────────────────────────────────────────────────────────────
     
     struct sigaction sa{};
