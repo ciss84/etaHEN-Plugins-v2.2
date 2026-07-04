@@ -26,9 +26,9 @@ int sceNotificationSend(int userId, bool isLogged, const char *payload);
 #define JB_FILE_RELPATH  "/download0/etahen_jailbreak"
 #define POLL_INTERVAL_US (250 * 1000)
 
-static inline void copyin(uintptr_t kdst, const void *src, size_t length) {
+/*static inline void copyin(uintptr_t kdst, const void *src, size_t length) {
 	kernel_copyin(const_cast<void *>(src), kdst, length);
-}
+}*/
 
 UniquePtr<Hijacker> Hijacker::getHijacker(const StringView &processName) {
 	UniquePtr<SharedObject> obj = nullptr;
