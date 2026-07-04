@@ -91,11 +91,12 @@ UniquePtr<TrapFrame> Hijacker::getTrapFrame() const {
     kernel_copyin(&ROOT, ucred + 0x0c, sizeof(ROOT)); // svuid
     kernel_copyin(&ROOT, ucred + 0x10, sizeof(ROOT)); // gid
     kernel_copyin(&ROOT, ucred + 0x14, sizeof(ROOT)); // rgid
-    kernel_copyin(&ROOT, ucred + 0x18, sizeof(ROOT)); // svgid
+    //kernel_copyin(&ROOT, ucred + 0x18, sizeof(ROOT)); // svgid
 
     // Sony auth / capability flags
     size_t sceattr_off = offsets::ucred_sceattr();
-    static constexpr uint64_t SCEATTRVAL = 0x4800000000000003ULL;
+    //static constexpr uint64_t SCEATTRVAL = 0x4800000000000003ULL;
+    static constexpr uint64_t SCEATTRVAL = 0x4801000000000013l;
     kernel_copyin(&SCEATTRVAL, ucred + sceattr_off, sizeof(SCEATTRVAL));
 
     // Escape sandbox via root vnode
