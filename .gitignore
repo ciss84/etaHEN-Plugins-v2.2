@@ -24,3 +24,5 @@ homebrew/
 *.til
 Plugin_samples/Game_Alpha_Enabler.zip
 .a
+lib/libelfloader.a
+lib/libhijacker.a
