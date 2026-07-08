@@ -58,6 +58,11 @@ static constexpr uint32_t SC_V760  = 0x7600000;
 static constexpr uint32_t SC_V761  = 0x7610000;
 static constexpr uint32_t SC_V800  = 0x8000000;
 static constexpr uint32_t SC_V820  = 0x8200000;
+static constexpr uint32_t SC_V820  = 0x8400000;
+static constexpr uint32_t SC_V900  = 0x9000000;
+static constexpr uint32_t SC_V1000  = 0x10000000;
+static constexpr uint32_t SC_V1100  = 0x11000000;
+static constexpr uint32_t SC_V1200  = 0x12000000;
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
@@ -221,11 +226,31 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat2        = "e8 ?? ?? d7 00 83 f8 01 0f 85 cd";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd";
         break;
-    case SC_V800: case SC_V820:
+    case SC_V800: case SC_V820: case SC_V840:
+        pat1        = "e8 ?? ?? ?? 01 4c 89 b5 80";
+        pat2        = "e8 ?? ?? d7 00 83 f8 01 0f 85 cd";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd";
+        break; 
+   case SC_V900:        
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
+   case SC_V1000:        
+        pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
+        pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
+        break;
+   case SC_V1100:        
+        pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
+        pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
+        break;
+   case SC_V1200:        
+        pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
+        pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
+        break;                        
     default:
         plugin_log("[SC_PATCH] FW 0x%08x non supportee, skip", fw_masked);
         free(copy);
