@@ -60,9 +60,21 @@ static constexpr uint32_t SC_V800  = 0x8000000;
 static constexpr uint32_t SC_V820  = 0x8200000;
 static constexpr uint32_t SC_V840  = 0x8400000;
 static constexpr uint32_t SC_V900  = 0x9000000;
+static constexpr uint32_t SC_V905  = 0x9050000;
+static constexpr uint32_t SC_V920  = 0x9200000;
+static constexpr uint32_t SC_V940  = 0x9400000;
+static constexpr uint32_t SC_V960  = 0x9600000;
 static constexpr uint32_t SC_V1000  = 0x10000000;
 static constexpr uint32_t SC_V1100  = 0x11000000;
+static constexpr uint32_t SC_V1100  = 0x11200000:
+static constexpr uint32_t SC_V1100  = 0x11400000:
+static constexpr uint32_t SC_V1100  = 0x11600000:
 static constexpr uint32_t SC_V1200  = 0x12000000;
+static constexpr uint32_t SC_V1202  = 0x12020000;
+static constexpr uint32_t SC_V1220  = 0x12200000;
+static constexpr uint32_t SC_V1240  = 0x12400000;
+static constexpr uint32_t SC_V1260  = 0x12600000;
+static constexpr uint32_t SC_V1270  = 0x12700000;
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
@@ -194,8 +206,7 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
     const char *pat1 = nullptr, *pat2 = nullptr, *pat_checker = nullptr;
 
     switch (fw_masked) {
-    case SC_V200: case SC_V220: case SC_V225: case SC_V226:
-    case SC_V230: case SC_V250: case SC_V270:
+    case SC_V200: case SC_V220: case SC_V225: case SC_V226: case SC_V230: case SC_V250: case SC_V270:
         pat1        = "e8 ?? ?? ec 00 48 89 9d";
         pat2        = "e8 ?? ?? b1 00 83 f8";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec 00 02 00 00 49";
@@ -220,8 +231,7 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat2        = "e8 ?? ?? ?? 00 83 f8 01 75 66";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49";
         break;
-    case SC_V700: case SC_V701: case SC_V720: case SC_V740:
-    case SC_V760: case SC_V761:
+    case SC_V700: case SC_V701: case SC_V720: case SC_V740: case SC_V760: case SC_V761:
         pat1        = "e8 ?? ?? ?? 01 4c 89 b5 80";
         pat2        = "e8 ?? ?? d7 00 83 f8 01 0f 85 cd";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd";
@@ -231,22 +241,22 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat2        = "e8 ?? ?? d7 00 83 f8 01 0f 85 cd";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd";
         break; 
-   case SC_V900:        
+   case SC_V900: case SC_V905: case SC_V920: case SC_V940: case SC_V960: 
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
-   case SC_V1000:        
+   case SC_V1000: case SC_V1001: case SC_V1020: case SC_V1040: case SC_V1060:        
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
-   case SC_V1100:        
+   case SC_V1100: case SC_V1120:        
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
-   case SC_V1200:        
+   case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:        
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
