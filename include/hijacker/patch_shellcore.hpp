@@ -64,17 +64,17 @@ static constexpr uint32_t SC_V905  = 0x9050000;
 static constexpr uint32_t SC_V920  = 0x9200000;
 static constexpr uint32_t SC_V940  = 0x9400000;
 static constexpr uint32_t SC_V960  = 0x9600000;
-static constexpr uint32_t SC_V1000  = 0x10000000;
-static constexpr uint32_t SC_V1100  = 0x11000000;
-static constexpr uint32_t SC_V1100  = 0x11200000:
-static constexpr uint32_t SC_V1100  = 0x11400000:
-static constexpr uint32_t SC_V1100  = 0x11600000:
-static constexpr uint32_t SC_V1200  = 0x12000000;
-static constexpr uint32_t SC_V1202  = 0x12020000;
-static constexpr uint32_t SC_V1220  = 0x12200000;
-static constexpr uint32_t SC_V1240  = 0x12400000;
-static constexpr uint32_t SC_V1260  = 0x12600000;
-static constexpr uint32_t SC_V1270  = 0x12700000;
+static constexpr uint64_t SC_V1000  = 0x10000000;
+static constexpr uint64_t SC_V1100  = 0x11000000;
+static constexpr uint64_t SC_V1100  = 0x11200000:
+static constexpr uint64_t SC_V1100  = 0x11400000:
+static constexpr uint64_t SC_V1100  = 0x11600000:
+static constexpr uint64_t SC_V1200  = 0x12000000;
+static constexpr uint64_t SC_V1202  = 0x12020000;
+static constexpr uint64_t SC_V1220  = 0x12200000;
+static constexpr uint64_t SC_V1240  = 0x12400000;
+static constexpr uint64_t SC_V1260  = 0x12600000;
+static constexpr uint64_t SC_V1270  = 0x12700000;
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
