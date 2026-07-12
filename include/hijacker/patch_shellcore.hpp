@@ -238,31 +238,36 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat2        = "e8 ?? ?? d7 00 83 f8 01 0f 85 cd";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd";
         break;
-    case SC_V800: case SC_V820: case SC_V840:
+    case SC_V800: case SC_V820:
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
-   case SC_V900: case SC_V905: case SC_V920: case SC_V940: case SC_V960: 
+    case SC_V840:
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
-   case SC_V1000: case SC_V1001: case SC_V1020: case SC_V1040: case SC_V1060:        
+    case SC_V900: case SC_V905: case SC_V920: case SC_V940: case SC_V960: 
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
-   case SC_V1100: case SC_V1120:        
+    case SC_V1000: case SC_V1001: case SC_V1020: case SC_V1040: case SC_V1060:        
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
         break;
-   case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:        
+    case SC_V1100: case SC_V1120:        
         pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
         pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
-        break;                        
+        break;
+    case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:        
+        pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
+        pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
+        break;                      
     default:
         plugin_log("[SC_PATCH] FW 0x%08x non supportee, skip", fw_masked);
         free(copy);
