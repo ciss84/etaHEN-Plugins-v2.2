@@ -449,11 +449,8 @@ int main()
     // ─────────────────────────────────────────────────────────────────────
 
     // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
-    if (!patch_shellcore_mountroot_hook()) {
-        plugin_log("[SC_MOUNTROOT] echec du hook mount_root, fallback sur patch statique");
-        if (!patch_shellcore_for_data()) {
-            plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
-        }
+    if (!patch_shellcore_for_data()) {
+        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
     }
     usleep(100000);
     // ─────────────────────────────────────────────────────────────────────
