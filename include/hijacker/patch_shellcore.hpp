@@ -377,6 +377,8 @@ static bool patch_shellcore_mountroot_hook()
     done = true;
     return true;
 }
+
+static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
 {
     if (!allow_ftp_dev_access) {
         plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS disabled, skipping patch");
