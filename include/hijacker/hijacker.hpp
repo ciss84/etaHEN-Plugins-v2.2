@@ -1,178 +1,473 @@
 #pragma once
 
-#include "dbg.hpp"
-#include "hijacker/allocator.hpp"
-#include "memory.hpp"
-#include "kernel.hpp"
-#include "kernel/rtld.hpp"
-#include "util.hpp"
-#include "allocator.hpp"
-#include <sys/_stdint.h>
-class Hijacker {
-	
-#ifndef LIBKERNEL_HANDLE
-	static constexpr int LIBKERNEL_HANDLE = 0x2001;
-#endif
+// -----------------------------------------------------------------------------
+//  patch_shellcore.hpp — active /data en sandbox sans etaHEN
+//  Porté depuis etaHEN (cpp_service.cpp / util daemon)
+//  A inclure/appeler UNE SEULE FOIS au démarrage de Plugin-Loader
+//  NOTE: ne pas inclure utils.hpp ici (pas de include guard dessus)
+//        On utilise directement les headers système + hijacker
+//  IMPORTANT: ce header doit être inclus APRES hijacker/hijacker.hpp
+//             (voir include/hijacker.hpp, qui garantit l'ordre)
+// -----------------------------------------------------------------------------
 
-	UniquePtr<SharedObject> obj;
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/sysctl.h>
+#include <sys/uio.h>
+#include <unistd.h>
+#include "hijacker/hijacker.hpp"
+#include "dbg/dbg.hpp"
 
-	protected:
-		friend class Spawner;
-		ProcessMemoryAllocator textAllocator;
-		ProcessMemoryAllocator dataAllocator;
+extern "C" {
+    int nmount(struct iovec *iov, unsigned int niov, int flags);
+    int unmount(const char *path, int flags);
+}
 
-	private:
-		mutable UniquePtr<SharedLib> libkernel;
-		mutable int mainThreadId = -1;
-		bool isMainThreadRunning = true;
+// plugin_log est défini dans utils.cpp, déclaration externe
+extern void plugin_log(const char* fmt, ...);
 
-		Hijacker(SharedObject *obj) : obj(obj), textAllocator(nullptr), dataAllocator(nullptr), libkernel(nullptr) {
-			auto eboot = this->obj->getEboot();
-			while (eboot == nullptr) {
-				// this can happen when it is still loading
-				eboot = this->obj->getEboot();
-			}
-			while (textAllocator == nullptr) {
-				textAllocator = ProcessMemoryAllocator(eboot->getTextSection());
-			}
-			while (dataAllocator == nullptr) {
-				dataAllocator = ProcessMemoryAllocator(eboot->getDataSection());
-			}
-		}
+// kernel_get_fw_version depuis ps5/kernel.h (déjà inclus dans main.cpp avant nous)
+extern "C" uint32_t kernel_get_fw_version();
 
-		RtldMeta *getLibKernelMetaData() const {
-			auto *meta = getLibKernel();
-			return meta ? meta->getMetaData() : nullptr;
-		}
+// -- Firmware version constants ------------------------------------------------
+static constexpr uint32_t SC_VERSION_MASK = 0xffff0000;
+static constexpr uint32_t SC_V200  = 0x2000000;
+static constexpr uint32_t SC_V220  = 0x2200000;
+static constexpr uint32_t SC_V225  = 0x2250000;
+static constexpr uint32_t SC_V226  = 0x2260000;
+static constexpr uint32_t SC_V230  = 0x2300000;
+static constexpr uint32_t SC_V250  = 0x2500000;
+static constexpr uint32_t SC_V270  = 0x2700000;
+static constexpr uint32_t SC_V300  = 0x3000000;
+static constexpr uint32_t SC_V310  = 0x3100000;
+static constexpr uint32_t SC_V320  = 0x3200000;
+static constexpr uint32_t SC_V321  = 0x3210000;
+static constexpr uint32_t SC_V400  = 0x4000000;
+static constexpr uint32_t SC_V402  = 0x4020000;
+static constexpr uint32_t SC_V403  = 0x4030000;
+static constexpr uint32_t SC_V450  = 0x4500000;
+static constexpr uint32_t SC_V451  = 0x4510000;
+static constexpr uint32_t SC_V500  = 0x5000000;
+static constexpr uint32_t SC_V502  = 0x5020000;
+static constexpr uint32_t SC_V510  = 0x5100000;
+static constexpr uint32_t SC_V550  = 0x5500000;
+static constexpr uint32_t SC_V600  = 0x6000000;
+static constexpr uint32_t SC_V602  = 0x6020000;
+static constexpr uint32_t SC_V650  = 0x6500000;
+static constexpr uint32_t SC_V700  = 0x7000000;
+static constexpr uint32_t SC_V701  = 0x7010000;
+static constexpr uint32_t SC_V720  = 0x7200000;
+static constexpr uint32_t SC_V740  = 0x7400000;
+static constexpr uint32_t SC_V760  = 0x7600000;
+static constexpr uint32_t SC_V761  = 0x7610000;
+static constexpr uint32_t SC_V800  = 0x8000000;
+static constexpr uint32_t SC_V820  = 0x8200000;
+static constexpr uint32_t SC_V840  = 0x8400000;
+static constexpr uint32_t SC_V860  = 0x8600000;
+static constexpr uint32_t SC_V900  = 0x9000000;
+static constexpr uint32_t SC_V905  = 0x9050000;
+static constexpr uint32_t SC_V920  = 0x9200000;
+static constexpr uint32_t SC_V940  = 0x9400000;
+static constexpr uint32_t SC_V960  = 0x9600000;
+static constexpr uint64_t SC_V1000  = 0x10000000;
+static constexpr uint64_t SC_V1001  = 0x10010000;
+static constexpr uint64_t SC_V1020  = 0x10200000;
+static constexpr uint64_t SC_V1040  = 0x10400000;
+static constexpr uint64_t SC_V1060  = 0x10600000;
+static constexpr uint64_t SC_V1100  = 0x11000000;
+static constexpr uint64_t SC_V1120  = 0x11200000;
+static constexpr uint64_t SC_V1200  = 0x12000000;
+static constexpr uint64_t SC_V1202  = 0x12020000;
+static constexpr uint64_t SC_V1220  = 0x12200000;
+static constexpr uint64_t SC_V1240  = 0x12400000;
+static constexpr uint64_t SC_V1260  = 0x12600000;
+static constexpr uint64_t SC_V1270  = 0x12700000;
 
-	public:
-		uintptr_t getLibKernelBase() const {
-			RtldMeta *meta = getLibKernelMetaData();
-			return meta ? meta->imageBase : 0;
-		}
-	private:
-		int getMainThreadId() const;
+// -- Helpers internes ----------------------------------------------------------
 
-	public:
-		static UniquePtr<Hijacker> getHijacker(const StringView &processName);
-		static UniquePtr<Hijacker> getHijacker(int pid) {
-			auto p = ::getProc(pid);
-			if (p == nullptr) [[unlikely]] {
-				return nullptr;
-			}
+static int sc_pattern_to_byte(const char *sig, uint8_t *out)
+{
+    int len = 0;
+    const char *p = sig;
+    while (*p) {
+        while (*p == ' ') p++;
+        if (!*p) break;
+        if (p[0] == '?' && (p[1] == '?' || p[1] == ' ' || !p[1])) {
+            out[len++] = 0xff;
+            p += (p[1] == '?') ? 2 : 1;
+        } else {
+            auto hex = [](char c) -> uint8_t {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return 0;
+            };
+            out[len++] = (hex(p[0]) << 4) | hex(p[1]);
+            p += 2;
+        }
+    }
+    return len;
+}
 
-			auto obj = p->getSharedObject();
+static uint8_t *sc_pattern_scan(const uint8_t *base, uint64_t size, const char *sig)
+{
+    uint8_t pat[256];
+    int plen = sc_pattern_to_byte(sig, pat);
+    if (plen <= 0) return nullptr;
 
-			// obj may be a nullptr when racing process creation
-			return obj != nullptr ? new Hijacker{obj.release()} : nullptr;
-		}
+    for (uint64_t i = 0; i + (uint64_t)plen <= size; i++) {
+        bool ok = true;
+        for (int j = 0; j < plen; j++) {
+            if (pat[j] != 0xff && base[i + j] != pat[j]) { ok = false; break; }
+        }
+        if (ok) return (uint8_t *)(base + i);
+    }
+    return nullptr;
+}
 
-		UniquePtr<KProc> getProc() const {
-			return ::getProc(getPid());
-		}
+static void sc_write_hex(pid_t pid, uint64_t addr, const char *hex)
+{
+    uint8_t buf[64];
+    int len = sc_pattern_to_byte(hex, buf);
+    if (len <= 0) return;
+    dbg::write(pid, addr, buf, len);
+}
 
-		void suspend() {
-			if (isMainThreadRunning) {
-				dbg::suspend(obj->pid);
-				isMainThreadRunning = false;
-			}
-		}
+// Compare les bytes déjà présents en mémoire (copie locale "copy") avec le
+// pattern hex attendu (ex: "b8 01 00 00 00"). Retourne true si ça matche déjà,
+// ce qui signifie que le patch a déjà été appliqué (par un run précédent,
+// par etaHEN, ou autre) et qu'il n'y a pas besoin de réécrire.
+static bool sc_bytes_already_patched(const uint8_t *at, const char *expected_hex)
+{
+    uint8_t expected[64];
+    int len = sc_pattern_to_byte(expected_hex, expected);
+    if (len <= 0 || !at) return false;
+    return memcmp(at, expected, len) == 0;
+}
 
-		void resume() {
-			if (!isMainThreadRunning) {
-				dbg::resume(obj->pid);
-				isMainThreadRunning = true;
-			}
-		}
+static pid_t sc_find_shellcore_pid()
+{
+    int      mib[4] = {1, 14, 8, 0};
+    size_t   buf_size;
+    uint8_t *buf;
 
-		int getPid() const {
-			return obj->pid;
-		}
+    if (sysctl(mib, 4, 0, &buf_size, 0, 0)) return -1;
+    if (!(buf = (uint8_t *)malloc(buf_size))) return -1;
+    if (sysctl(mib, 4, buf, &buf_size, 0, 0)) { free(buf); return -1; }
 
-		SharedLib *getEboot() const {
-			return obj->getEboot();
-		}
+    pid_t pid = -1;
+    for (uint8_t *ptr = buf; ptr < buf + buf_size;) {
+        int   ki_structsize = *(int *)ptr;
+        pid_t ki_pid        = *(pid_t *)&ptr[72];
+        char *ki_tdname     = (char *)&ptr[447];
+        ptr += ki_structsize;
+        if (!strcmp("SceShellCore", ki_tdname)) { pid = ki_pid; break; }
+    }
+    free(buf);
+    return pid;
+}
 
-		uintptr_t imagebase() const {
-			auto eboot = obj->getEboot();
-			return eboot ? eboot->imagebase() : 0;
-		}
+static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
+{
+    if (!allow_ftp_dev_access) {
+        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS disabled, skipping patch");
+        return false;
+    }
+    static bool done = false;
+    if (done) return true;
+    uint32_t fw = kernel_get_fw_version();
+    uint32_t fw_masked = fw & SC_VERSION_MASK;
+    plugin_log("[SC_PATCH] FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
 
-		SharedLib *getLibKernel() const {
-			if (libkernel == nullptr) [[unlikely]] {
-				libkernel = obj->getLib(LIBKERNEL_HANDLE);
-			}
-			return libkernel.get();
-		}
+    pid_t sc_pid = sc_find_shellcore_pid();
+    if (sc_pid < 0) {
+        plugin_log("[SC_PATCH] SceShellCore not found!");
+        return false;
+    }
+    plugin_log("[SC_PATCH] SceShellCore pid: %d", sc_pid);
 
-		UniquePtr<SharedLib> getLib(int handle) const {
-			return obj->getLib(handle);
-		}
+    UniquePtr<Hijacker> exe = Hijacker::getHijacker(sc_pid);
+    if (!exe) {
+        plugin_log("[SC_PATCH] Hijacker::getHijacker failed");
+        return false;
+    }
 
-		UniquePtr<SharedLib> getLib(const StringView &name) const {
-			return obj->getLib(name);
-		}
+    uintptr_t sc_base = exe->getEboot()->getTextSection()->start();
+    uint64_t  sc_size = exe->getEboot()->getTextSection()->sectionLength();
+    plugin_log("[SC_PATCH] text base=0x%llx size=0x%llx", sc_base, sc_size);
 
-		SharedLibIterator getLibs() const {
-			return obj->getLibs();
-		}
+    if (!sc_base || !sc_size) {
+        plugin_log("[SC_PATCH] invalid text section");
+        return false;
+    }
 
-		UniquePtr<TrapFrame> getTrapFrame() const;
-		void jailbreak(bool escapeSandbox=true) const;
-		uintptr_t getFunctionAddress(const SharedLib *lib, const Nid &fname) const noexcept;
+    uint8_t *copy = (uint8_t *)malloc(sc_size);
+    if (!copy) { plugin_log("[SC_PATCH] malloc failed"); return false; }
 
-		uintptr_t getLibKernelFunctionAddress(const Nid &fname) const {
-			return getFunctionAddress(getLibKernel(), fname);
-		}
+    if (!dbg::read(sc_pid, sc_base, copy, sc_size)) {
+        plugin_log("[SC_PATCH] dbg::read failed");
+        free(copy);
+        return false;
+    }
 
-		uintptr_t getLibKernelAddress(const Nid &fname) const {
-			return getFunctionAddress(getLibKernel(), fname);
-		}
+    const char *pat1 = nullptr, *pat2 = nullptr, *pat_checker = nullptr;
 
-		ProcessMemoryAllocator &getDataAllocator() {
-			return dataAllocator;
-		}
+    switch (fw_masked) {
+    case SC_V200: case SC_V220: case SC_V225: case SC_V226: case SC_V230: case SC_V250: case SC_V270:
+        pat1        = "e8 ?? ?? ec 00 48 89 9d";
+        pat2        = "e8 ?? ?? b1 00 83 f8";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec 00 02 00 00 49";
+        break;
+    case SC_V300: case SC_V310: case SC_V320: case SC_V321:
+        pat1        = "e8 ?? ?? 00 01 ?? 89 ?? 40";
+        pat2        = "e8 ?? ?? c5 00 83 f8 01 75 5f";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec 00 02 00 00 49";
+        break;
+    case SC_V400: case SC_V402: case SC_V403: case SC_V450: case SC_V451:
+        pat1        = "e8 ?? ?? ?? ?? 4c 89 bd ?? ?? ?? ?? 48 89 9d ?? ?? ?? ??";
+        pat2        = "e8 ?? ?? ?? ?? 83 f8 01 75 ?? 41 80 3c 24 00";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec 00 02 00 00 49";
+        break;
+    case SC_V500: case SC_V502: case SC_V510: case SC_V550:
+        pat1        = "e8 ?? ?? fb 00 85 c0 75 0d e8 ?? ?? fb 00 85 c0 0f 84 47";
+        pat2        = "e8 ?? ?? c7 00 83 f8 01 75 5e";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49";
+        break;
+    case SC_V600: case SC_V602: case SC_V650:
+        pat1        = "e8 ?? ?? ?? 01 4c 89 a5 80";
+        pat2        = "e8 ?? ?? ?? 00 83 f8 01 75 66";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49";
+        break;
+    case SC_V700: case SC_V701: case SC_V720: case SC_V740: case SC_V760: case SC_V761:
+        pat1        = "e8 ?? ?? ?? 01 4c 89 b5 80";
+        pat2        = "e8 ?? ?? d7 00 83 f8 01 0f 85 cd";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd";
+        break;
+    case SC_V800: case SC_V820:  case SC_V840: case SC_V860:
+        pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
+        pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
+        break;        
+    case SC_V900: case SC_V905: case SC_V920: case SC_V940: case SC_V960:
+        pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 9A";
+        pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
+        pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 49 89 CD";
+        break;   
+    case SC_V1000: case SC_V1001: case SC_V1020: case SC_V1040: case SC_V1060:
+        pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 7E";
+        pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
+        pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 49 89";
+        break;
+    case SC_V1100: case SC_V1120:
+        pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 17";
+        pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
+        pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 4C 8B";
+        break;
+    case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:
+        pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 17";
+        pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
+        pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 4C 8B";
+        break;
+    default:
+        plugin_log("[SC_PATCH] FW 0x%08x non supportee, skip", fw_masked);
+        free(copy);
+        return false;
+    }
 
-		ProcessMemoryAllocator &getTextAllocator() {
-			return textAllocator;
-		}
+    uint8_t *found1  = sc_pattern_scan(copy, sc_size, pat1);
+    uint8_t *found2  = sc_pattern_scan(copy, sc_size, pat2);
+    uint8_t *checker = sc_pattern_scan(copy, sc_size, pat_checker);
 
-		UniquePtr<uint8_t[]> read(uintptr_t src, size_t size) {
-			return dbg::read(getPid(), src, size).release();
-		}
+    plugin_log("[SC_PATCH] found1=%p found2=%p checker=%p", found1, found2, checker);
 
-		bool read(uintptr_t src, void *dst, size_t size) {
-			return dbg::read(getPid(), src, dst, size);
-		}
+    bool ok = false;
+    static constexpr const char *PATCH_BYTES = "b8 01 00 00 00";
+    static constexpr const char *CHECKER_PATCH_BYTES = "55 48 89 e5 b8 14 18 26 80 5d c3";
 
-		template <typename T>
-		T read(uintptr_t vaddr) {
-			T t;
-			read(vaddr, &t, sizeof(t));
-			return t;
-		}
+    if (found1 && found2) {
+        bool already1 = sc_bytes_already_patched(found1, PATCH_BYTES);
+        bool already2 = sc_bytes_already_patched(found2, PATCH_BYTES);
 
-		template <size_t size>
-		bool write(uintptr_t vaddr, const uint8_t(&buf)[size]) {
-			return dbg::write(getPid(), vaddr, buf, size);
-		}
+        if (already1 && already2) {
+            plugin_log("[SC_PATCH] data1/data2 deja actifs, skip ecriture");
+            ok = true;
+        } else {
+            uint64_t off1 = sc_base + (uint64_t)(found1 - copy);
+            uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
+            if (!already1) sc_write_hex(sc_pid, off1, PATCH_BYTES);
+            if (!already2) sc_write_hex(sc_pid, off2, PATCH_BYTES);
+            plugin_log("[SC_PATCH] patched data1=0x%llx (deja_actif=%d) data2=0x%llx (deja_actif=%d)",
+                       off1, already1, off2, already2);
+            mkdir("/user/devbin", 0777);
+            mkdir("/user/devlog", 0777);
+            ok = true;
+        }
+    } else {
+        plugin_log("[SC_PATCH] patterns data1/data2 non trouves!");
+    }
 
-		bool write(uintptr_t vaddr, const void *src, size_t size) {
-			return dbg::write(getPid(), vaddr, src, size);
-		}
+    if (checker) {
+        if (sc_bytes_already_patched(checker, CHECKER_PATCH_BYTES)) {
+            plugin_log("[SC_PATCH] checker deja actif, skip ecriture");
+        } else {
+            uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
+            sc_write_hex(sc_pid, off_chk, CHECKER_PATCH_BYTES);
+            plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
+        }
+    } else {
+        plugin_log("[SC_PATCH] checker non trouve (non fatal)");
+    }
 
-		template <typename T>
-		bool write(uintptr_t vaddr, const T &value) {
-			return write(vaddr, &value, sizeof(value));
-		}
+    free(copy);
 
-		template <typename T>
-		ProcessPointer<T> getPointer(uintptr_t addr) const {
-			return {getPid(), addr};
-		}
+    if (ok) {
+        done = true;
+        plugin_log("[SC_PATCH] /data sandbox enabled OK");
+    }
 
-		void hexdump(uintptr_t addr, size_t size) {
-			auto buf = read(addr, size);
-			::hexdump(buf.get(), size);
-		}
-};
+    return ok;
+}
+
+// -----------------------------------------------------------------------------
+//  EXPERIMENTAL — a tester uniquement, ne remplace PAS forcement le patch au-dessus
+//  Contrairement a patch_shellcore_for_data() (qui bypass le CHECK de permission
+//  dans SceShellCore), cette variante ne touche a aucune logique interne:
+//  elle monte juste "/user/data" en nullfs sur "/data" (meme mecanisme que le
+//  hook mount_root de ps-patch-system, mais fait directement en syscall nmount
+//  depuis le process courant, sans hook/trampoline sur SceShellCore).
+//  Utilise le meme IOVEC_ENTRY/IOVEC_SIZE style que mount_unionfs() dans main.cpp.
+//  A tester: si le check de sandbox dans SceShellCore n'est pas bypass, ce mount
+//  seul risque de ne rien changer pour le FTP dev access (le check refusera
+//  quand meme l'acces, meme si le mount existe).
+// -----------------------------------------------------------------------------
+static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
+{
+    if (!allow_ftp_dev_access) {
+        plugin_log("[SC_PATCH_TEST] ALLOW_FTP_DEV_ACCESS disabled, skipping mount");
+        return false;
+    }
+
+    #define SC_IOVEC_ENTRY(x) {(char *)(x), strlen(x) + 1}
+    struct iovec iov[] = {
+        SC_IOVEC_ENTRY("fstype"), SC_IOVEC_ENTRY("nullfs"),
+        SC_IOVEC_ENTRY("fspath"), SC_IOVEC_ENTRY("/data"),
+        SC_IOVEC_ENTRY("target"), SC_IOVEC_ENTRY("/user/data"),
+    };
+    #undef SC_IOVEC_ENTRY
+
+    const int r = nmount(iov, sizeof(iov) / sizeof(iov[0]), 0);
+    if (r != 0) {
+        plugin_log("[SC_PATCH_TEST] nmount /user/data -> /data a echoue: %d", r);
+        return false;
+    }
+    plugin_log("[SC_PATCH_TEST] /user/data monte sur /data (nullfs) OK");
+    return true;
+}
+// -----------------------------------------------------------------------------
+//  patch_shellcore_for_ftp() — bypass le check devkit qui gate le FTP interne
+//  de SceShellCore (FTP Sony sur port 2121 / FTP dev access).
+//
+//  Distinct de patch_shellcore_for_data() : cible une fonction séparée dans
+//  SceShellCore qui appelle sysctl "machdep.check_genuine_devkit_for_psm"
+//  pour vérifier si la console est un devkit avant d'autoriser le FTP.
+//
+//  Pattern vérifié sur : FW 7.00, FW 8.20 (unique dans les deux binaires)
+//  Patch : mov eax,1; ret ? force le retour "devkit confirmé"
+//
+//  TODO : patterns pour FW 2.xx–6.xx et 9.xx+ non vérifiés (dumps requis)
+// -----------------------------------------------------------------------------
+static bool patch_shellcore_for_ftp()
+{
+    static bool done = false;
+    if (done) return true;
+
+    uint32_t fw        = kernel_get_fw_version();
+    uint32_t fw_masked = fw & SC_VERSION_MASK;
+    plugin_log("[SC_FTP] FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
+
+    const char *pat_ftp = nullptr;
+
+    switch (fw_masked) {
+    // FW 7.xx et 8.xx : même fonction, même prologue, même séquence
+    // vérifiée sur FW 7.00 (vaddr 0x1320ed0) et FW 8.20 (vaddr 0x13a41f0)
+    case SC_V700: case SC_V701: case SC_V720: case SC_V740: case SC_V760: case SC_V761:
+    case SC_V800: case SC_V820: case SC_V840: case SC_V860:
+        pat_ftp =
+            "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 "
+            "4c 8b 2d ?? ?? ?? ?? "                               // MOV R13, [rip+disp32]
+            "49 89 d6 49 89 f7 31 f6 31 d2 "
+            "49 8b 45 00 48 89 45 d0 "
+            "e8 ?? ?? ?? ?? "                                     // CALL sysctl_wrapper
+            "85 c0 78 71";                                        // TEST eax,eax; JS +0x71
+        break;
+
+    // TODO: FW 2.xx – 6.xx : function probablement différente, dump requis
+    // TODO: FW 9.xx – 12.xx : même logique mais pattern à extraire
+
+    default:
+        plugin_log("[SC_FTP] FW 0x%08x non supporte, skip", fw_masked);
+        return false;
+    }
+
+    pid_t sc_pid = sc_find_shellcore_pid();
+    if (sc_pid < 0) {
+        plugin_log("[SC_FTP] SceShellCore not found!");
+        return false;
+    }
+    plugin_log("[SC_FTP] SceShellCore pid: %d", sc_pid);
+
+    UniquePtr<Hijacker> exe = Hijacker::getHijacker(sc_pid);
+    if (!exe) {
+        plugin_log("[SC_FTP] Hijacker::getHijacker failed");
+        return false;
+    }
+
+    uintptr_t sc_base = exe->getEboot()->getTextSection()->start();
+    uint64_t  sc_size = exe->getEboot()->getTextSection()->sectionLength();
+    plugin_log("[SC_FTP] text base=0x%llx size=0x%llx", sc_base, sc_size);
+
+    if (!sc_base || !sc_size) {
+        plugin_log("[SC_FTP] invalid text section");
+        return false;
+    }
+
+    uint8_t *copy = (uint8_t *)malloc(sc_size);
+    if (!copy) { plugin_log("[SC_FTP] malloc failed"); return false; }
+
+    if (!dbg::read(sc_pid, sc_base, copy, sc_size)) {
+        plugin_log("[SC_FTP] dbg::read failed");
+        free(copy);
+        return false;
+    }
+
+    // mov eax, 1; ret — force le retour "devkit confirmé" (eax != 0)
+    static constexpr const char *FTP_PATCH = "b8 01 00 00 00 c3";
+
+    uint8_t *found = sc_pattern_scan(copy, sc_size, pat_ftp);
+    plugin_log("[SC_FTP] devkit_check=%p", found);
+
+    bool ok = false;
+    if (found) {
+        if (sc_bytes_already_patched(found, FTP_PATCH)) {
+            plugin_log("[SC_FTP] devkit_check deja patche, skip");
+            ok = true;
+        } else {
+            uint64_t off = sc_base + (uint64_t)(found - copy);
+            sc_write_hex(sc_pid, off, FTP_PATCH);
+            plugin_log("[SC_FTP] patched devkit_check @ 0x%llx", off);
+            ok = true;
+        }
+    } else {
+        plugin_log("[SC_FTP] pattern non trouve!");
+    }
+
+    free(copy);
+
+    if (ok) {
+        done = true;
+        plugin_log("[SC_FTP] FTP dev access enabled OK");
+    }
+    return ok;
+}
