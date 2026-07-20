@@ -365,3 +365,113 @@ static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
     plugin_log("[SC_PATCH_TEST] /user/data monte sur /data (nullfs) OK");
     return true;
 }
+// ─────────────────────────────────────────────────────────────────────────────
+//  patch_shellcore_for_ftp() — bypass le check devkit qui gate le FTP interne
+//  de SceShellCore (FTP Sony sur port 2121 / FTP dev access).
+//
+//  Distinct de patch_shellcore_for_data() : cible une fonction séparée dans
+//  SceShellCore qui appelle sysctl "machdep.check_genuine_devkit_for_psm"
+//  pour vérifier si la console est un devkit avant d'autoriser le FTP.
+//
+//  Pattern vérifié sur : FW 7.00, FW 8.20 (unique dans les deux binaires)
+//  Patch : mov eax,1; ret → force le retour "devkit confirmé"
+//
+//  TODO : patterns pour FW 2.xx–6.xx et 9.xx+ non vérifiés (dumps requis)
+// ─────────────────────────────────────────────────────────────────────────────
+static bool patch_shellcore_for_ftp()
+{
+    static bool done = false;
+    if (done) return true;
+
+    uint32_t fw        = kernel_get_fw_version();
+    uint32_t fw_masked = fw & SC_VERSION_MASK;
+    plugin_log("[SC_FTP] FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
+
+    const char *pat_ftp = nullptr;
+
+    switch (fw_masked) {
+    // Pattern vérifié sur tous les FW 7.xx → 12.xx (unique dans chaque binaire) :
+    // FW 7.00 @ 0x1320ed0 | FW 8.20 @ 0x13a41f0 | FW 9.00 @ 0x142d630
+    // FW 10.00 @ 0x1432250 | FW 11.00 @ 0x14a05b0 | FW 12.00 @ 0x14bf060
+    case SC_V700: case SC_V701: case SC_V720: case SC_V740: case SC_V760: case SC_V761:
+    case SC_V800: case SC_V820: case SC_V840: case SC_V860:
+    case SC_V900: case SC_V905: case SC_V920: case SC_V940: case SC_V960:
+    case SC_V1000: case SC_V1001: case SC_V1020: case SC_V1040: case SC_V1060:
+    case SC_V1100: case SC_V1120:
+    case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:
+        pat_ftp =
+            "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 "
+            "4c 8b 2d ?? ?? ?? ?? "                               // MOV R13, [rip+disp32]
+            "49 89 d6 49 89 f7 31 f6 31 d2 "
+            "49 8b 45 00 48 89 45 d0 "
+            "e8 ?? ?? ?? ?? "                                     // CALL sysctl_wrapper
+            "85 c0 78 71";                                        // TEST eax,eax; JS +0x71
+        break;
+
+    // TODO: FW 2.xx – 6.xx : function probablement différente, dump requis
+
+    default:
+        plugin_log("[SC_FTP] FW 0x%08x non supporte, skip", fw_masked);
+        return false;
+    }
+
+    pid_t sc_pid = sc_find_shellcore_pid();
+    if (sc_pid < 0) {
+        plugin_log("[SC_FTP] SceShellCore not found!");
+        return false;
+    }
+    plugin_log("[SC_FTP] SceShellCore pid: %d", sc_pid);
+
+    UniquePtr<Hijacker> exe = Hijacker::getHijacker(sc_pid);
+    if (!exe) {
+        plugin_log("[SC_FTP] Hijacker::getHijacker failed");
+        return false;
+    }
+
+    uintptr_t sc_base = exe->getEboot()->getTextSection()->start();
+    uint64_t  sc_size = exe->getEboot()->getTextSection()->sectionLength();
+    plugin_log("[SC_FTP] text base=0x%llx size=0x%llx", sc_base, sc_size);
+
+    if (!sc_base || !sc_size) {
+        plugin_log("[SC_FTP] invalid text section");
+        return false;
+    }
+
+    uint8_t *copy = (uint8_t *)malloc(sc_size);
+    if (!copy) { plugin_log("[SC_FTP] malloc failed"); return false; }
+
+    if (!dbg::read(sc_pid, sc_base, copy, sc_size)) {
+        plugin_log("[SC_FTP] dbg::read failed");
+        free(copy);
+        return false;
+    }
+
+    // mov eax, 1; ret — force le retour "devkit confirmé" (eax != 0)
+    static constexpr const char *FTP_PATCH = "b8 01 00 00 00 c3";
+
+    uint8_t *found = sc_pattern_scan(copy, sc_size, pat_ftp);
+    plugin_log("[SC_FTP] devkit_check=%p", found);
+
+    bool ok = false;
+    if (found) {
+        if (sc_bytes_already_patched(found, FTP_PATCH)) {
+            plugin_log("[SC_FTP] devkit_check deja patche, skip");
+            ok = true;
+        } else {
+            uint64_t off = sc_base + (uint64_t)(found - copy);
+            sc_write_hex(sc_pid, off, FTP_PATCH);
+            plugin_log("[SC_FTP] patched devkit_check @ 0x%llx", off);
+            ok = true;
+        }
+    } else {
+        plugin_log("[SC_FTP] pattern non trouve!");
+    }
+
+    free(copy);
+
+    if (ok) {
+        done = true;
+        plugin_log("[SC_FTP] FTP dev access enabled OK");
+    }
+    return ok;
+}
