@@ -449,8 +449,10 @@ int main()
     // ─────────────────────────────────────────────────────────────────────
 
     // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
-    if (!patch_shellcore_for_data()) {
-        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    // TEST: variante mount (nullfs /user/data -> /data), voir patch_shellcore.hpp
+    // Rollback -> remettre: if (!patch_shellcore_for_data()) { ... }
+    if (!patch_shellcore_for_data_via_mount()) {
+        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
     }
     usleep(750000);
     // ─────────────────────────────────────────────────────────────────────

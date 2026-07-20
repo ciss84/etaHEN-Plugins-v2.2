@@ -15,9 +15,16 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
+#include <sys/uio.h>
+#include <errno.h>
 #include <unistd.h>
 #include "hijacker/hijacker.hpp"
 #include "dbg/dbg.hpp"
+
+extern "C" {
+    int nmount(struct iovec *iov, unsigned int niov, int flags);
+    int unmount(const char *path, int flags);
+}
 
 // plugin_log est défini dans utils.cpp, déclaration externe
 extern void plugin_log(const char* fmt, ...);
@@ -239,11 +246,11 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat2        = "e8 ?? ?? d7 00 83 f8 01 0f 85 cd";
         pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd";
         break;
-    case SC_V800: case SC_V820: case SC_V840: case SC_V860:
-        pat1        = "E8 ?? ?? ?? 01 85 c0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 C1";
-        pat2        = "E8 ?? ?? DC 00 83 F8 01 0F";
-        pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 49 89 CD";
-        break;
+    case SC_V800: case SC_V820:  case SC_V840: case SC_V860:
+        pat1        = "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1";
+        pat2        = "e8 ?? ?? dc 00 83 f8 01 0f";
+        pat_checker = "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd";
+        break;        
     case SC_V900: case SC_V905: case SC_V920: case SC_V940: case SC_V960:
         pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 9A";
         pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
@@ -322,4 +329,35 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
     }
 
     return ok;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  EXPERIMENTAL — a tester uniquement, ne remplace PAS forcement le patch au-dessus
+//  Contrairement a patch_shellcore_for_data() (qui bypass le CHECK de permission
+//  dans SceShellCore), cette variante ne touche a aucune logique interne:
+//  elle monte juste "/user/data" en nullfs sur "/data" (meme mecanisme que le
+//  hook mount_root de ps-patch-system, mais fait directement en syscall nmount
+//  depuis le process courant, sans hook/trampoline sur SceShellCore).
+//  Utilise le meme IOVEC_ENTRY/IOVEC_SIZE style que mount_unionfs() dans main.cpp.
+//  A tester: si le check de sandbox dans SceShellCore n'est pas bypass, ce mount
+//  seul risque de ne rien changer pour le FTP dev access (le check refusera
+//  quand meme l'acces, meme si le mount existe).
+// ─────────────────────────────────────────────────────────────────────────────
+static bool patch_shellcore_for_data_via_mount()
+{
+    #define SC_IOVEC_ENTRY(x) {(char *)(x), strlen(x) + 1}
+    struct iovec iov[] = {
+        SC_IOVEC_ENTRY("fstype"), SC_IOVEC_ENTRY("nullfs"),
+        SC_IOVEC_ENTRY("fspath"), SC_IOVEC_ENTRY("/data"),
+        SC_IOVEC_ENTRY("target"), SC_IOVEC_ENTRY("/user/data"),
+    };
+    #undef SC_IOVEC_ENTRY
+
+    const int r = nmount(iov, sizeof(iov) / sizeof(iov[0]), 0);
+    if (r != 0) {
+        plugin_log("[SC_PATCH_TEST] nmount /user/data -> /data a echoue: %d (errno %d)", r, errno);
+        return false;
+    }
+    plugin_log("[SC_PATCH_TEST] /user/data monte sur /data (nullfs) OK");
+    return true;
 }
