@@ -387,47 +387,48 @@ static bool patch_shellcore_for_ftp()
     uint32_t fw_masked = fw & SC_VERSION_MASK;
     plugin_log("[SC_FTP] FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
 
-    const char *pat_ftp   = nullptr;
-    const char *ftp_patch = nullptr;
+    const char *pat_ftp    = nullptr;   // pattern → devkit_check function
+    const char *ftp_patch  = nullptr;   // patch bytes pour devkit_check
+    const char *pat_gate   = nullptr;   // pattern → JNZ gate avant devkit_check
+    int         gate_jnz   = 0;        // offset du JNZ dans pat_gate
 
     switch (fw_masked) {
-    // FW 5.xx : prologue différent (R14, sub rsp 0x20, sysctlbyname direct)
-    // retourne 1 si devkit confirmé → patch: mov eax,1; ret
-    // vérifié sur FW 5.50 @ 0x1146580
-    case SC_V500: case SC_V502: case SC_V510: case SC_V550:
-        pat_ftp =
-            "55 48 89 e5 41 56 53 48 83 ec 20 "
-            "4c 8b 35 ?? ?? ?? ?? "            // MOV R14, [rip+disp32]
-            "48 8d 3d ?? ?? ?? ?? "            // LEA RDI, devkit_string
-            "48 8d 75 e4 48 8d 55 d8 "
-            "31 db 31 c9 45 31 c0";
-        ftp_patch = "b8 01 00 00 00 c3";       // mov eax,1; ret
-        break;
-
-    // FW 7.xx → 12.xx : même prologue, même séquence
-    // retourne 0 si devkit confirmé (via XOR R12D,R12D) → patch: xor eax,eax; ret
-    // FW 7.00 @ 0x1320ed0 | FW 8.20 @ 0x13a41f0 | FW 9.00 @ 0x142d630
-    // FW 10.00 @ 0x1432250 | FW 11.00 @ 0x14a05b0 | FW 12.00 @ 0x14bf060
-    case SC_V700: case SC_V701: case SC_V720: case SC_V740: case SC_V760: case SC_V761:
+    // FW 8.xx et 9.xx : gate = MOV R14D,[rbp-0x20c]; VMOVUPS; TEST R14D,R14D; JNZ +0x2d
+    // vérifié FW 8.20 : devkit_check @ 0x13a41f0 | gate JNZ @ 0x13a3f26
+    // vérifié FW 9.00 : devkit_check @ 0x142d630 | gate JNZ @ 0x142d366
     case SC_V800: case SC_V820: case SC_V840: case SC_V860:
     case SC_V900: case SC_V905: case SC_V920: case SC_V940: case SC_V960:
+        pat_ftp =
+            "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 "
+            "4c 8b 2d ?? ?? ?? ?? "
+            "49 89 d6 49 89 f7 31 f6 31 d2 "
+            "49 8b 45 00 48 89 45 d0 "
+            "e8 ?? ?? ?? ?? 85 c0 78 71";
+        ftp_patch = "31 c0 c3";
+        pat_gate  = "44 8b b5 f4 fd ff ff c5 f8 11 45 c0 45 85 f6 75 2d";
+        gate_jnz  = 15;
+        break;
+
+    // FW 10.xx – 12.xx : gate = MOV EAX,[rbp-0x20c]; VMOVUPS; TEST EAX,EAX; JNZ +0x2e
+    // vérifié FW 10.00 : devkit_check @ 0x1432250 | gate JNZ @ 0x1431fa2
+    // vérifié FW 11.00 : devkit_check @ 0x14a05b0 | gate JNZ @ 0x14a0302
+    // vérifié FW 12.00 : devkit_check @ 0x14bf060 | gate JNZ @ 0x14bedb2
     case SC_V1000: case SC_V1001: case SC_V1020: case SC_V1040: case SC_V1060:
     case SC_V1100: case SC_V1120:
     case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:
         pat_ftp =
             "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 "
-            "4c 8b 2d ?? ?? ?? ?? "            // MOV R13, [rip+disp32]
+            "4c 8b 2d ?? ?? ?? ?? "
             "49 89 d6 49 89 f7 31 f6 31 d2 "
             "49 8b 45 00 48 89 45 d0 "
-            "e8 ?? ?? ?? ?? "                  // CALL sysctl_wrapper
-            "85 c0 78 71";                     // TEST eax,eax; JS +0x71
-        ftp_patch = "31 c0 c3";               // xor eax,eax; ret
+            "e8 ?? ?? ?? ?? 85 c0 78 71";
+        ftp_patch = "31 c0 c3";
+        pat_gate  = "8b 85 f4 fd ff ff c5 f8 11 45 c0 85 c0 75 2e";
+        gate_jnz  = 13;
         break;
 
-    // TODO: FW 2.xx – 4.xx et 6.xx : dumps requis
-
     default:
-        plugin_log("[SC_FTP] FW 0x%08x non supporte, skip", fw_masked);
+        plugin_log("[SC_FTP] FW 0x%08x non supporte (ou pas besoin), skip", fw_masked);
         return false;
     }
 
@@ -477,7 +478,28 @@ static bool patch_shellcore_for_ftp()
             ok = true;
         }
     } else {
-        plugin_log("[SC_FTP] pattern non trouve!");
+        plugin_log("[SC_FTP] pattern devkit_check non trouve!");
+    }
+
+    // 2ème patch : NOP le JNZ qui bloque l'accès à devkit_check sur retail
+    // Quand [rbp-0x20c] est non-zero (toujours sur retail), le JNZ saute
+    // directement au return sans appeler devkit_check ni init FTP
+    if (pat_gate && gate_jnz > 0) {
+        uint8_t *gate = sc_pattern_scan(copy, sc_size, pat_gate);
+        plugin_log("[SC_FTP] gate_jnz=%p", gate);
+        if (gate) {
+            uint8_t *jnz_ptr = gate + gate_jnz;
+            if (sc_bytes_already_patched(jnz_ptr, "90 90")) {
+                plugin_log("[SC_FTP] gate deja patche, skip");
+            } else {
+                uint64_t off_gate = sc_base + (uint64_t)(jnz_ptr - copy);
+                sc_write_hex(sc_pid, off_gate, "90 90");
+                plugin_log("[SC_FTP] patched gate JNZ @ 0x%llx", off_gate);
+            }
+        } else {
+            plugin_log("[SC_FTP] pattern gate non trouve!");
+            ok = false;
+        }
     }
 
     free(copy);
