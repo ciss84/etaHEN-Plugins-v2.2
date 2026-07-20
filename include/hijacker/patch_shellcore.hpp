@@ -16,7 +16,6 @@
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/uio.h>
-#include <errno.h>
 #include <unistd.h>
 #include "hijacker/hijacker.hpp"
 #include "dbg/dbg.hpp"
@@ -355,7 +354,7 @@ static bool patch_shellcore_for_data_via_mount()
 
     const int r = nmount(iov, sizeof(iov) / sizeof(iov[0]), 0);
     if (r != 0) {
-        plugin_log("[SC_PATCH_TEST] nmount /user/data -> /data a echoue: %d (errno %d)", r, errno);
+        plugin_log("[SC_PATCH_TEST] nmount /user/data -> /data a echoue: %d", r);
         return false;
     }
     plugin_log("[SC_PATCH_TEST] /user/data monte sur /data (nullfs) OK");
