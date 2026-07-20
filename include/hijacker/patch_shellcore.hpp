@@ -376,7 +376,7 @@ static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
 //  Pattern vérifié sur : FW 7.00, FW 8.20 (unique dans les deux binaires)
 //  Patch : mov eax,1; ret → force le retour "devkit confirmé"
 //
-//  TODO : patterns pour FW 2.xx–6.xx et 9.xx+ non vérifiés (dumps requis)
+//  TODO : patterns pour FW 2.xx–4.xx et 6.xx non vérifiés (dumps requis)
 // ─────────────────────────────────────────────────────────────────────────────
 static bool patch_shellcore_for_ftp()
 {
@@ -387,10 +387,25 @@ static bool patch_shellcore_for_ftp()
     uint32_t fw_masked = fw & SC_VERSION_MASK;
     plugin_log("[SC_FTP] FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
 
-    const char *pat_ftp = nullptr;
+    const char *pat_ftp   = nullptr;
+    const char *ftp_patch = nullptr;
 
     switch (fw_masked) {
-    // Pattern vérifié sur tous les FW 7.xx → 12.xx (unique dans chaque binaire) :
+    // FW 5.xx : prologue différent (R14, sub rsp 0x20, sysctlbyname direct)
+    // retourne 1 si devkit confirmé → patch: mov eax,1; ret
+    // vérifié sur FW 5.50 @ 0x1146580
+    case SC_V500: case SC_V502: case SC_V510: case SC_V550:
+        pat_ftp =
+            "55 48 89 e5 41 56 53 48 83 ec 20 "
+            "4c 8b 35 ?? ?? ?? ?? "            // MOV R14, [rip+disp32]
+            "48 8d 3d ?? ?? ?? ?? "            // LEA RDI, devkit_string
+            "48 8d 75 e4 48 8d 55 d8 "
+            "31 db 31 c9 45 31 c0";
+        ftp_patch = "b8 01 00 00 00 c3";       // mov eax,1; ret
+        break;
+
+    // FW 7.xx → 12.xx : même prologue, même séquence
+    // retourne 0 si devkit confirmé (via XOR R12D,R12D) → patch: xor eax,eax; ret
     // FW 7.00 @ 0x1320ed0 | FW 8.20 @ 0x13a41f0 | FW 9.00 @ 0x142d630
     // FW 10.00 @ 0x1432250 | FW 11.00 @ 0x14a05b0 | FW 12.00 @ 0x14bf060
     case SC_V700: case SC_V701: case SC_V720: case SC_V740: case SC_V760: case SC_V761:
@@ -401,14 +416,15 @@ static bool patch_shellcore_for_ftp()
     case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:
         pat_ftp =
             "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 "
-            "4c 8b 2d ?? ?? ?? ?? "                               // MOV R13, [rip+disp32]
+            "4c 8b 2d ?? ?? ?? ?? "            // MOV R13, [rip+disp32]
             "49 89 d6 49 89 f7 31 f6 31 d2 "
             "49 8b 45 00 48 89 45 d0 "
-            "e8 ?? ?? ?? ?? "                                     // CALL sysctl_wrapper
-            "85 c0 78 71";                                        // TEST eax,eax; JS +0x71
+            "e8 ?? ?? ?? ?? "                  // CALL sysctl_wrapper
+            "85 c0 78 71";                     // TEST eax,eax; JS +0x71
+        ftp_patch = "31 c0 c3";               // xor eax,eax; ret
         break;
 
-    // TODO: FW 2.xx – 6.xx : function probablement différente, dump requis
+    // TODO: FW 2.xx – 4.xx et 6.xx : dumps requis
 
     default:
         plugin_log("[SC_FTP] FW 0x%08x non supporte, skip", fw_masked);
@@ -446,20 +462,17 @@ static bool patch_shellcore_for_ftp()
         return false;
     }
 
-    // mov eax, 1; ret — force le retour "devkit confirmé" (eax != 0)
-    static constexpr const char *FTP_PATCH = "b8 01 00 00 00 c3";
-
     uint8_t *found = sc_pattern_scan(copy, sc_size, pat_ftp);
-    plugin_log("[SC_FTP] devkit_check=%p", found);
+    plugin_log("[SC_FTP] devkit_check=%p patch=%s", found, ftp_patch);
 
     bool ok = false;
     if (found) {
-        if (sc_bytes_already_patched(found, FTP_PATCH)) {
+        if (sc_bytes_already_patched(found, ftp_patch)) {
             plugin_log("[SC_FTP] devkit_check deja patche, skip");
             ok = true;
         } else {
             uint64_t off = sc_base + (uint64_t)(found - copy);
-            sc_write_hex(sc_pid, off, FTP_PATCH);
+            sc_write_hex(sc_pid, off, ftp_patch);
             plugin_log("[SC_FTP] patched devkit_check @ 0x%llx", off);
             ok = true;
         }
