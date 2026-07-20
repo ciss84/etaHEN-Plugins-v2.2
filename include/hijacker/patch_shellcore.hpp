@@ -342,8 +342,13 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
 //  seul risque de ne rien changer pour le FTP dev access (le check refusera
 //  quand meme l'acces, meme si le mount existe).
 // ─────────────────────────────────────────────────────────────────────────────
-static bool patch_shellcore_for_data_via_mount()
+static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
 {
+    if (!allow_ftp_dev_access) {
+        plugin_log("[SC_PATCH_TEST] ALLOW_FTP_DEV_ACCESS disabled, skipping mount");
+        return false;
+    }
+
     #define SC_IOVEC_ENTRY(x) {(char *)(x), strlen(x) + 1}
     struct iovec iov[] = {
         SC_IOVEC_ENTRY("fstype"), SC_IOVEC_ENTRY("nullfs"),
