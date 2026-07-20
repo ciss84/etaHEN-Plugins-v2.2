@@ -23,3 +23,5 @@ homebrew/
 *.lnk
 *.til
 Plugin_samples/Game_Alpha_Enabler.zip
+/lib/libhijacker.a
+/libhijacker/libhijacker.a
