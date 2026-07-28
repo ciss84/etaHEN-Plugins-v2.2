@@ -256,7 +256,7 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 49 89 CD";
         break;   
     case SC_V1000: case SC_V1001: case SC_V1020: case SC_V1040: case SC_V1060:
-        pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 7E";
+        pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 10 06 00 00";
         pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
         pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 49 89";
         break;
