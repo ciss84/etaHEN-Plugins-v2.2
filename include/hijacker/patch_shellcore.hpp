@@ -272,8 +272,6 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
         pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 4C 8B";
         break;
-    // FW 12.70 : meme structure que 12.00-12.60, mais le 3e byte du call de pat2
-    // a change (E2 -> E3) suite a une recompilation. Verifie sur dump reel.
     case SC_V1270:
         pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 17";
         pat2        = "E8 ?? ?? E3 00 83 F8 01 0F 85";
