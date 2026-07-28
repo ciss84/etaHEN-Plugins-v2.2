@@ -78,6 +78,8 @@ static constexpr uint64_t SC_V1040  = 0x10400000;
 static constexpr uint64_t SC_V1060  = 0x10600000;
 static constexpr uint64_t SC_V1100  = 0x11000000;
 static constexpr uint64_t SC_V1120  = 0x11200000;
+static constexpr uint64_t SC_V1140  = 0x11400000;
+static constexpr uint64_t SC_V1160  = 0x11600000;
 static constexpr uint64_t SC_V1200  = 0x12000000;
 static constexpr uint64_t SC_V1202  = 0x12020000;
 static constexpr uint64_t SC_V1220  = 0x12200000;
@@ -260,14 +262,21 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
         pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 49 89";
         break;
-    case SC_V1100: case SC_V1120:
+    case SC_V1100: case SC_V1120: case SC_V1140: case SC_V1160:
         pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 17";
         pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
         pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 4C 8B";
         break;
-    case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260: case SC_V1270:
+    case SC_V1200: case SC_V1202: case SC_V1220: case SC_V1240: case SC_V1260:
         pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 17";
         pat2        = "E8 ?? ?? E2 00 83 F8 01 0F 85";
+        pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 4C 8B";
+        break;
+    // FW 12.70 : meme structure que 12.00-12.60, mais le 3e byte du call de pat2
+    // a change (E2 -> E3) suite a une recompilation. Verifie sur dump reel.
+    case SC_V1270:
+        pat1        = "E8 ?? ?? ?? 01 85 C0 75 0D E8 ?? ?? ?? 01 85 C0 0F 84 17";
+        pat2        = "E8 ?? ?? E3 00 83 F8 01 0F 85";
         pat_checker = "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC C8 01 00 00 4C 8B";
         break;
     default:
