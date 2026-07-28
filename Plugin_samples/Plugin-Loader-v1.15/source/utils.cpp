@@ -153,12 +153,23 @@ bool HookGame(UniquePtr<Hijacker> &hijacker, uint64_t alsr_b, const char* prx_pa
 
       plugin_log("[HookGame] Creation du PREMIER hook pour PID %d", current_pid);
 
+      // ── DIAG FW8+ : verifier la marge reelle avant d'ecrire quoi que ce soit ──
+      // NOTE temporaire : a retirer une fois le vrai probleme confirme/infirme.
+      // start()/end() sont deja utilises ailleurs dans ce code (patch_shellcore.hpp),
+      // donc on reste sur des methodes confirmees existantes.
+      uintptr_t text_start = hijacker->getEboot()->getTextSection()->start();
+      uintptr_t text_end   = hijacker->getEboot()->getTextSection()->end();
+      plugin_log("[HookGame][DIAG] text section: start=0x%llx end=0x%llx (taille totale: 0x%llx)",
+                 text_start, text_end, text_end - text_start);
+
       auto code = hijacker->getTextAllocator().allocate(shellcode_size);
       auto stuffAddr = hijacker->getDataAllocator().allocate(sizeof(GameStuff));
 
       plugin_log("[HookGame] Shellcode alloue @ 0x%llx (size: %zu)", code, shellcode_size);
       plugin_log("[HookGame] GameStuff alloue  @ 0x%llx (size: %zu)", stuffAddr, sizeof(GameStuff));
       plugin_log("[HookGame] PLT hook: 0x%llx → shellcode 0x%llx", hook_adr, code);
+      plugin_log("[HookGame][DIAG] gap texte carve = 0x%llx (code=0x%llx, text_end=0x%llx) — si negatif ou proche de 0, l'allocateur deborde",
+                 text_end - code, code, text_end);
 
       builder.setExtraStuffAddr(stuffAddr);
 
