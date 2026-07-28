@@ -10,6 +10,7 @@
 #include "dbg/dbg.hpp"
 #include "elf/elf.hpp"
 #include "hijacker/hijacker.hpp"
+#include "hijacker/patch_shellcore.hpp"
 #include "notify.hpp"
 #include "backtrace.hpp"
 
