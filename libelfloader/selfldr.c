@@ -27,10 +27,11 @@ along with this program; see the file COPYING. If not, see
 #include <sys/user.h>
 #include <sys/wait.h>
 
-#include <ps4/klog.h>
+#include <ps5/klog.h>
 
 #include "log.h"
 #include "selfldr.h"
+
 
 /**
  * Data structure for SELF headers.
@@ -49,6 +50,7 @@ typedef struct self_head {
   uint16_t flags;
 } self_head_t;
 
+
 /**
  * Prototype for arguments passed to selfldr_rfork_entry().
  **/
@@ -56,8 +58,9 @@ typedef struct self_spawn_args {
   int stdio;
   uint8_t *self;
   size_t self_size;
-  char *const *argv;
+  char* const* argv;
 } self_spawn_args_t;
+
 
 /**
  * Duplicate the file descriptor from the given process.
@@ -74,13 +77,14 @@ rdup(pid_t pid, int fd) {
   return err;
 }
 
+
 /**
  * Entry point for the forked process.
  **/
 static int
 selfldr_rfork_entry(void *ctx) {
   self_spawn_args_t *args = (self_spawn_args_t *)ctx;
-  char *const envp[] = { 0 };
+  char *const envp[] = {0};
   pid_t ppid = getppid();
   char path[PATH_MAX];
   int fd;
@@ -104,7 +108,7 @@ selfldr_rfork_entry(void *ctx) {
   }
 
   sprintf(path, "/user/temp/payload_%d.self", getpid());
-  if((fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0755)) < 0) {
+  if((fd=open(path, O_WRONLY | O_CREAT | O_TRUNC, 0755)) < 0) {
     klog_perror("open");
     return 0;
   }
@@ -120,28 +124,28 @@ selfldr_rfork_entry(void *ctx) {
   return 0;
 }
 
+
 pid_t
-selfldr_spawn(int stdio, char *const argv[], uint8_t *self, size_t self_size) {
-  self_spawn_args_t args = { stdio, self, self_size, argv };
+selfldr_spawn(int stdio, char* const argv[], uint8_t *self, size_t self_size) {
+  self_spawn_args_t args = {stdio, self, self_size, argv};
   struct kevent evt;
   void *stack;
   pid_t pid;
   int kq;
 
-  if((kq = kqueue()) < 0) {
+  if((kq=kqueue()) < 0) {
     LOG_PERROR("kqueue");
     return -1;
   }
 
-  if(!(stack = malloc(PAGE_SIZE))) {
+  if(!(stack=malloc(PAGE_SIZE))) {
     LOG_PERROR("malloc");
     close(kq);
     return -1;
   }
 
-  if((pid = rfork_thread(RFPROC | RFCFDG | RFMEM, stack + PAGE_SIZE - 8,
-                         selfldr_rfork_entry, &args))
-     < 0) {
+  if((pid=rfork_thread(RFPROC | RFCFDG | RFMEM, stack+PAGE_SIZE-8,
+		       selfldr_rfork_entry, &args)) < 0) {
     LOG_PERROR("rfork_thread");
     free(stack);
     close(kq);
@@ -162,6 +166,7 @@ selfldr_spawn(int stdio, char *const argv[], uint8_t *self, size_t self_size) {
   return pid;
 }
 
+
 int
 selfldr_read(int fd, uint8_t **self, size_t *self_size) {
   self_head_t head;
@@ -171,7 +176,7 @@ selfldr_read(int fd, uint8_t **self, size_t *self_size) {
     return -1;
   }
 
-  if(!(buf = malloc(head.file_size))) {
+  if(!(buf=malloc(head.file_size))) {
     return -1;
   }
 

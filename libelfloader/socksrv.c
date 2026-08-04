@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 John Törnblom
+/* Copyright (C) 2024 John Törnblom
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of the GNU General Public License as published by the
@@ -14,22 +14,19 @@ You should have received a copy of the GNU General Public License
 along with this program; see the file COPYING. If not, see
 <http://www.gnu.org/licenses/>.  */
 
-#include <sys/types.h>
-
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 #include <limits.h>
 #include <netinet/in.h>
 #include <signal.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
-#include <sys/sched.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
-#include <sys/sysctl.h>
+
+#include <ps5/kernel.h>
 
 #include "elfldr.h"
 #include "log.h"
@@ -37,25 +34,29 @@ along with this program; see the file COPYING. If not, see
 #include "selfldr.h"
 #include "uri.h"
 
+
 /**
  * Magic number that socket input starts with (little endian).
  **/
-#define PAYLOAD_MAGIC_ELF 0x464C457F  // ELF payload
-#define PAYLOAD_MAGIC_SELF 0x1D3D154F // SELF payload
-#define PAYLOAD_MAGIC_FILE 0x656C6966 // file:// URI
-#define PAYLOAD_MAGIC_HTTP 0x70747468 // http:// or https:// URI
+#define PAYLOAD_MAGIC_ELF      0x464C457F // ELF payload
+#define PAYLOAD_MAGIC_URI_FILE 0x656C6966 // file:// URI
+#define PAYLOAD_MAGIC_URI_HTTP 0x70747468 // http:// or https:// URI
+#define PAYLOAD_MAGIC_PS4_SELF 0x1D3D154F // PS4 SELF payload
+#define PAYLOAD_MAGIC_PS5_SELF 0xEEF51454 // PS5 SELF payload
+#define PAYLOAD_MAGIC_HTTP_GET 0x20544547 // HTTP GET request
+
 
 /**
  * Decode an escaped argument.
  **/
-static char *
-args_decode(const char *s) {
+static char*
+args_decode(const char* s) {
   size_t length = strlen(s);
-  char *arg = malloc(length + 1);
+  char *arg = malloc(length+1);
   size_t off = 0;
   int escape = 0;
 
-  for(size_t i = 0; i < length; i++) {
+  for(size_t i=0; i<length; i++) {
     if(s[i] == '\\' && !escape) {
       escape = 1;
     } else {
@@ -68,18 +69,19 @@ args_decode(const char *s) {
   return arg;
 }
 
+
 /**
  *
  **/
 static int
-args_split(const char *args, char **argv, size_t size) {
-  char *buf = strdup(args);
+args_split(const char* args, char** argv, size_t size) {
+  char* buf = strdup(args);
   size_t len = strlen(buf);
   int escape = 0;
   int argc = 0;
 
-  memset(argv, 0, size * sizeof(char *));
-  for(int i = 0; i < len && argc < size; i++) {
+  memset(argv, 0, size*sizeof(char*));
+  for(int i=0; i<len && argc<size; i++) {
     if(escape) {
       escape = 0;
       continue;
@@ -96,16 +98,16 @@ args_split(const char *args, char **argv, size_t size) {
     }
 
     if(buf[i] && !i) {
-      argv[argc++] = buf + i;
+      argv[argc++] = buf+i;
       continue;
     }
 
-    if(buf[i] && !buf[i - 1]) {
-      argv[argc++] = buf + i;
+    if(buf[i] && !buf[i-1]) {
+      argv[argc++] = buf+i;
     }
   }
 
-  for(int i = 0; i < argc; i++) {
+  for(int i=0; i<argc; i++) {
     argv[i] = args_decode(argv[i]);
   }
 
@@ -114,43 +116,45 @@ args_split(const char *args, char **argv, size_t size) {
   return argc;
 }
 
+
 /**
  * Spawn an ELF or a SELF payload.
  **/
 static pid_t
-payload_spawn(char *filename, char *args, int fd, uint8_t *payload,
-              size_t payload_size) {
-  int magic = *((int *)payload);
-  char *argv[255 + 2] = { 0 };
+payload_spawn(char* filename, char* args, int fd,
+	      uint8_t* payload, size_t payload_size) {
+  int magic = *((int*)payload);
+  char* argv[255+2] = {0};
   pid_t pid = -1;
 
   argv[0] = filename;
-  args_split(args, argv + 1, 255);
+  args_split(args, argv+1, 255);
 
   if(magic == PAYLOAD_MAGIC_ELF) {
     pid = elfldr_spawn(fd, argv, payload, payload_size);
 
-  } else if(magic == PAYLOAD_MAGIC_SELF) {
+  } else if(magic == PAYLOAD_MAGIC_PS4_SELF || magic == PAYLOAD_MAGIC_PS5_SELF) {
     pid = selfldr_spawn(fd, argv, payload, payload_size);
   }
 
-  for(int i = 1; argv[i]; i++) {
+  for(int i=1; argv[i]; i++) {
     free(argv[i]);
   }
 
   return pid;
 }
 
+
 /**
  *
  **/
 static int
-payload_readuri(int fd, char *uri, size_t size) {
+payload_readuri(int fd, char* uri, size_t size) {
   char c;
   int n;
 
-  for(int i = 0; i < size; i++) {
-    if((n = read(fd, &c, 1)) < 0) {
+  for(int i=0; i<size; i++) {
+    if((n=read(fd, &c, 1)) < 0) {
       return -1;
     }
     if(n == 0) {
@@ -171,17 +175,53 @@ payload_readuri(int fd, char *uri, size_t size) {
   return -1;
 }
 
+
+
+/**
+ * Read a HTTP (GET) request.
+ **/
+static int
+payload_readhttp(int fd, char* uri, size_t size) {
+  char buf[PATH_MAX+255] = {0};
+  ssize_t n;
+  char* p;
+
+  if((n=read(fd, buf, sizeof(buf)-1)) < 0) {
+    return -1;
+  }
+
+  if(memcmp(buf, "GET ", 4)) {
+    return -1;
+  }
+
+  if(!(p=strchr(buf+4, ' '))) {
+    return -1;
+  }
+
+  if(strstr(buf, "user-agent: rnps-action-cards")) {
+    return -1;
+  }
+
+  *p = 0;
+  snprintf(uri, size, "file:/%s", buf+4);
+
+  write(fd, "HTTP/1.1 200 OK\r\n\r\n", 19);
+
+  return 0;
+}
+
+
 /**
  * Process connection input.
  **/
 static void
 on_connection(int fd) {
-  char *filename = "payload.elf";
-  char uri[PATH_MAX + 1] = { 0 };
-  uint8_t *buf = 0;
+  char* filename = "payload.elf";
+  char uri[PATH_MAX+1] = {0};
+  uint8_t* buf = 0;
   size_t len = 0;
   int optval = 1;
-  char *args = "";
+  char* args = "";
   int magic = 0;
 
   if(setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval)) < 0) {
@@ -189,18 +229,22 @@ on_connection(int fd) {
     return;
   }
 
-  if(recv(fd, &magic, sizeof(magic), MSG_PEEK | MSG_WAITALL)
-     != sizeof(magic)) {
+  if(recv(fd, &magic, sizeof(magic), MSG_PEEK | MSG_WAITALL) != sizeof(magic)) {
     LOG_PERROR("recv");
     write(fd, "[elfldr.elf] Unknown payload format\n\r\0", 38);
     return;
   }
 
-  if(magic == PAYLOAD_MAGIC_FILE || magic == PAYLOAD_MAGIC_HTTP) {
-    if(payload_readuri(fd, uri, PATH_MAX)
-       || uri_get_content(uri, &buf, &len)) {
-      LOG_PERROR("read_uri");
+  if(magic == PAYLOAD_MAGIC_URI_FILE || magic == PAYLOAD_MAGIC_URI_HTTP) {
+    if(payload_readuri(fd, uri, PATH_MAX) || uri_get_content(uri, &buf, &len)) {
+      LOG_PERROR("payload_readuri");
       write(fd, "[elfldr.elf] Error reading URI payload\n\r\0", 41);
+    }
+
+  } else if(magic == PAYLOAD_MAGIC_HTTP_GET) {
+    if(payload_readhttp(fd, uri, PATH_MAX) || uri_get_content(uri, &buf, &len)) {
+      LOG_PERROR("payload_readhttp");
+      write(fd, "[elfldr.elf] Error reading HTTP payload\n\r\0", 42);
     }
 
   } else if(magic == PAYLOAD_MAGIC_ELF) {
@@ -209,7 +253,7 @@ on_connection(int fd) {
       write(fd, "[elfldr.elf] Error reading ELF payload\n\r\0", 41);
     }
 
-  } else if(magic == PAYLOAD_MAGIC_SELF) {
+  } else if(magic == PAYLOAD_MAGIC_PS4_SELF || magic == PAYLOAD_MAGIC_PS5_SELF) {
     if(selfldr_read(fd, &buf, &len)) {
       LOG_PERROR("selfldr_read");
       write(fd, "[elfldr.elf] Error reading SELF payload\n\r\0", 42);
@@ -219,10 +263,10 @@ on_connection(int fd) {
   }
 
   if(buf) {
-    if(!(filename = uri_get_filename(uri))) {
+    if(!(filename=uri_get_filename(uri))) {
       filename = strdup("payload.elf");
     }
-    if(!(args = uri_get_param(uri, "args"))) {
+    if(!(args=uri_get_param(uri, "args"))) {
       args = strdup("");
     }
     if(payload_spawn(filename, args, fd, buf, len) < 0) {
@@ -234,8 +278,9 @@ on_connection(int fd) {
   }
 }
 
+
 /**
- * Serve an ELF loader via a TCP socket on the given port.
+ * Serve ELF loader via a socket.
  **/
 static int
 serve_elfldr(uint16_t port) {
@@ -245,13 +290,12 @@ serve_elfldr(uint16_t port) {
   int connfd;
   int srvfd;
 
-  if((srvfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+  if((srvfd=socket(AF_INET, SOCK_STREAM, 0)) < 0) {
     LOG_PERROR("socket");
     return -1;
   }
 
-  if(setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int))
-     < 0) {
+  if(setsockopt(srvfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int)) < 0) {
     LOG_PERROR("setsockopt");
     return -1;
   }
@@ -261,7 +305,7 @@ serve_elfldr(uint16_t port) {
   srvaddr.sin_addr.s_addr = htonl(INADDR_ANY);
   srvaddr.sin_port = htons(port);
 
-  if(bind(srvfd, (struct sockaddr *)&srvaddr, sizeof(srvaddr)) != 0) {
+  if(bind(srvfd, (struct sockaddr*)&srvaddr, sizeof(srvaddr)) != 0) {
     LOG_PERROR("bind");
     return -1;
   }
@@ -273,7 +317,7 @@ serve_elfldr(uint16_t port) {
 
   while(1) {
     socklen = sizeof(cliaddr);
-    if((connfd = accept(srvfd, (struct sockaddr *)&cliaddr, &socklen)) < 0) {
+    if((connfd=accept(srvfd, (struct sockaddr*)&cliaddr, &socklen)) < 0) {
       LOG_PERROR("accept");
       break;
     }
@@ -285,51 +329,9 @@ serve_elfldr(uint16_t port) {
   return close(srvfd);
 }
 
-/**
- * Fint the pid of a process with the given name.
- **/
-static pid_t
-find_pid(const char *name) {
-  int mib[4] = { 1, 14, 8, 0 };
-  pid_t mypid = getpid();
-  pid_t pid = -1;
-  size_t buf_size;
-  uint8_t *buf;
-
-  if(sysctl(mib, 4, 0, &buf_size, 0, 0)) {
-    LOG_PERROR("sysctl");
-    return -1;
-  }
-
-  if(!(buf = malloc(buf_size))) {
-    LOG_PERROR("malloc");
-    return -1;
-  }
-
-  if(sysctl(mib, 4, buf, &buf_size, 0, 0)) {
-    LOG_PERROR("sysctl");
-    free(buf);
-    return -1;
-  }
-
-  for(uint8_t *ptr = buf; ptr < (buf + buf_size);) {
-    int ki_structsize = *(int *)ptr;
-    pid_t ki_pid = *(pid_t *)&ptr[72];
-    char *ki_tdname = (char *)&ptr[447];
-
-    ptr += ki_structsize;
-    if(!strcmp(name, ki_tdname) && ki_pid != mypid) {
-      pid = ki_pid;
-    }
-  }
-
-  free(buf);
-
-  return pid;
-}
 
 static int
-notify_address(const char *prefix, int port) {
+notify_address(const char* prefix, int port) {
   char ip[INET_ADDRSTRLEN] = "127.0.0.1";
   struct ifaddrs *ifaddr;
 
@@ -339,7 +341,7 @@ notify_address(const char *prefix, int port) {
   }
 
   // Enumerate all AF_INET IPs
-  for(struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+  for(struct ifaddrs *ifa=ifaddr; ifa!=NULL; ifa=ifa->ifa_next) {
     if(ifa->ifa_addr == NULL) {
       continue;
     }
@@ -353,7 +355,7 @@ notify_address(const char *prefix, int port) {
       continue;
     }
 
-    struct sockaddr_in *in = (struct sockaddr_in *)ifa->ifa_addr;
+    struct sockaddr_in *in = (struct sockaddr_in*)ifa->ifa_addr;
     inet_ntop(AF_INET, &(in->sin_addr), ip, sizeof(ip));
 
     // skip interfaces without an ip
@@ -370,41 +372,13 @@ notify_address(const char *prefix, int port) {
   return 0;
 }
 
+
 /**
  *
  **/
-int
-main(int argc, char* argv[]) {
-  struct sched_param sp;
+int main() {
   int port = 9021;
-  int notify_user = 1;
   pid_t pid;
-  char c;
-
-  syscall(SYS_thr_set_name, -1, "elfldr.elf");
-  signal(SIGCHLD, SIG_IGN);
-  signal(SIGPIPE, SIG_IGN);
-
-  while((c=getopt(argc, argv, "p:qh")) != -1) {
-    switch(c) {
-    case 'p':
-      port = atoi(optarg);
-      break;
-
-    case 'q':
-      notify_user = 0;
-      break;
-
-    case 'h':
-    default:
-      LOG_PRINTF("usage: %s [-p PORT] [-q]\n", argv[0]);
-      LOG_PUTS("");
-      LOG_PUTS("options:");
-      LOG_PUTS("    -p PORT    Bind the socket server to the given PORT (default: 9021)");
-      LOG_PUTS("    -q         Do not send an on-screen notification when the server starts");
-      return EXIT_FAILURE;
-    }
-  }
 
   LOG_PRINTF("Socket server was compiled at %s %s\n", __DATE__, __TIME__);
 
@@ -413,13 +387,8 @@ main(int argc, char* argv[]) {
     return -1;
   }
 
-  sp.sched_priority = sched_get_priority_max(SCHED_RR);
-  if(sched_setscheduler(0, SCHED_RR, &sp)) {
-    LOG_PERROR("sched_setscheduler");
-  }
-
   syscall(SYS_setsid);
-  while((pid = find_pid("elfldr.elf")) > 0) {
+  while((pid=elfldr_find_pid("elfldr.elf")) > 0) {
     if(kill(pid, SIGKILL)) {
       LOG_PERROR("kill");
       _exit(-1);
@@ -427,9 +396,11 @@ main(int argc, char* argv[]) {
     sleep(1);
   }
 
-  if(notify_user) {
-    notify_address("Serving ELF loader on", port);
-  }
+  syscall(SYS_thr_set_name, -1, "elfldr.elf");
+  signal(SIGCHLD, SIG_IGN);
+  signal(SIGPIPE, SIG_IGN);
+
+  notify_address("Serving ELF loader on", port);
   while(1) {
     serve_elfldr(port);
     sleep(3);

@@ -16,26 +16,34 @@ along with this program; see the file COPYING. If not, see
 
 #pragma once
 
-#include <stdint.h>
 #include <unistd.h>
+
+
+/**
+ * Find the id of a process with the given name.
+ **/
+pid_t elfldr_find_pid(const char* name);
+
 
 /**
  * Spawn a new process that executes the given ELF file.
  **/
-pid_t elfldr_spawn(int stdio, char *const argv[], uint8_t *elf,
-                   size_t elf_size);
+pid_t elfldr_spawn(int stdio, char* const argv[], uint8_t *elf, size_t elf_size);
+
 
 /**
  * Execute an ELF file in a given process.
  **/
-int elfldr_exec(pid_t pid, int stdio, uint8_t *elf, size_t elf_size);
+int elfldr_exec(pid_t pid, int stdio, uint8_t* elf);
+
 
 /**
  * Read an ELF from the given socket.
  **/
-int elfldr_read(int fd, uint8_t **elf, size_t *elf_size);
+int elfldr_read(int fd, uint8_t** elf, size_t* elf_size);
 
-/**
- * Ensure the data is in the ELF format.
- **/
-int elfldr_sanity_check(uint8_t *elf, size_t elf_size)
+
+int elfldr_sanity_check(uint8_t *elf, size_t elf_size);
+
+
+int elfldr_raise_privileges(pid_t pid);
