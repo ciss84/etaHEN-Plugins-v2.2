@@ -121,12 +121,13 @@ static uint8_t *sc_pattern_scan(const uint8_t *base, uint64_t size, const char *
     return nullptr;
 }
 
-static void sc_write_hex(Hijacker *exe, uint64_t addr, const char *hex)
+// Identique à write_bytes() de cpp_service — dbg::write direct, pas de Hijacker
+static void sc_write_hex(pid_t pid, uint64_t addr, const char *hex)
 {
     uint8_t buf[64];
     uint32_t len = sc_pattern_to_byte(hex, buf);
     if (len == 0) return;
-    exe->write(addr, buf, (size_t)len);
+    dbg::write(pid, addr, buf, (size_t)len);
 }
 
 static bool sc_bytes_already_patched(const uint8_t *at, const char *expected_hex)
@@ -195,7 +196,7 @@ static uintptr_t sc_find_fn_ptr_in_data(Hijacker *exe, uintptr_t fn_addr)
     uint8_t *copy = (uint8_t *)malloc(data_size);
     if (!copy) return 0;
 
-    if (!exe->read(data_base, copy, data_size)) {
+    if (!dbg::read(g_ShellCorePid, data_base, copy, data_size)) {
         plugin_log("[SC_NEWPROC] read data section failed");
         free(copy);
         return 0;
@@ -389,8 +390,7 @@ static const sc_getappinfo_pattern sc_getappinfo_table[] = {
 
 // ── sc_find_on_new_process ────────────────────────────────────────────────────
 
-static uintptr_t sc_find_on_new_process(Hijacker *exe,
-                                        uintptr_t sc_base, uint64_t sc_size,
+static uintptr_t sc_find_on_new_process(uintptr_t sc_base, uint64_t sc_size,
                                         const uint8_t *copy, uint32_t fw_masked)
 {
     for (const auto& e : sc_newproc_table) {
@@ -413,7 +413,7 @@ static uintptr_t sc_find_on_new_process(Hijacker *exe,
 //  Patch le timeout des process monitorés : jb → jmp (0f 82 → 48 e9).
 //  Appliqué uniquement sur PS5 (pas de guard is_ps4 ici, on est toujours PS5).
 
-static void sc_patch_app_timeout(Hijacker *exe,
+static void sc_patch_app_timeout(pid_t pid,
                                  uintptr_t sc_base, uint64_t sc_size,
                                  const uint8_t *copy)
 {
@@ -423,7 +423,6 @@ static void sc_patch_app_timeout(Hijacker *exe,
         return;
     }
 
-    // offset 3 : on saute les 3 premiers bytes (83 f8 0b) pour atterrir sur le jb
     uint8_t *target = found + SC_PAT_APPTIMEOUT_OFFSET;
 
     if (sc_bytes_already_patched(target, SC_PATCH_APPTIMEOUT)) {
@@ -432,7 +431,7 @@ static void sc_patch_app_timeout(Hijacker *exe,
     }
 
     uint64_t addr = sc_base + (uint64_t)(target - copy);
-    sc_write_hex(exe, addr, SC_PATCH_APPTIMEOUT);
+    sc_write_hex(pid, addr, SC_PATCH_APPTIMEOUT);
     plugin_log("[SC_TIMEOUT] patched app timeout @ 0x%llx", addr);
 }
 
@@ -563,8 +562,8 @@ static bool patchShellCore(bool allow_ftp_dev_access = true)
             const uint64_t off2 = shellcore_base +
                 ((uint64_t)shellcore_offset_data2 - (uint64_t)shellcore_copy);
 
-            sc_write_hex(executable.get(), off1, "b8 01 00 00 00");
-            sc_write_hex(executable.get(), off2, "b8 01 00 00 00");
+            sc_write_hex(g_ShellCorePid, off1, "b8 01 00 00 00");
+            sc_write_hex(g_ShellCorePid, off2, "b8 01 00 00 00");
 
             plugin_log("[SC_PATCH] patched /data: data1=0x%llx data2=0x%llx", off1, off2);
             plugin_log("[SC_PATCH] mkdir /user/devbin: %d  /user/devlog: %d",
@@ -578,7 +577,7 @@ static bool patchShellCore(bool allow_ftp_dev_access = true)
         if (patch_checker_offset) {
             const uint64_t off_chk = shellcore_base +
                 ((uint64_t)patch_checker_offset - (uint64_t)shellcore_copy);
-            sc_write_hex(executable.get(), off_chk,
+            sc_write_hex(g_ShellCorePid, off_chk,
                          "55 48 89 e5 b8 14 18 26 80 5d c3");
             plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
         } else {
@@ -586,7 +585,7 @@ static bool patchShellCore(bool allow_ftp_dev_access = true)
         }
 
         // ── App timeout patch (etaHEN: patchAppTimeoutForMonitoredProcs) ──────
-        sc_patch_app_timeout(executable.get(), shellcore_base, shellcore_size, shellcore_copy);
+        sc_patch_app_timeout(g_ShellCorePid, shellcore_base, shellcore_size, shellcore_copy);
 
         // ── Scans MountRoot + GetAppInfoSfo (TODO hook) ───────────────────────
         sc_scan_mount_root(shellcore_base, shellcore_size, shellcore_copy);
@@ -594,7 +593,7 @@ static bool patchShellCore(bool allow_ftp_dev_access = true)
 
         // ── onNewProcess : localiser pour hook PRX injection ──────────────────
         uintptr_t onNewProc_addr = sc_find_on_new_process(
-            executable.get(), shellcore_base, shellcore_size, shellcore_copy, fw_masked);
+            shellcore_base, shellcore_size, shellcore_copy, fw_masked);
         if (onNewProc_addr) {
             uintptr_t ptr_addr = sc_find_fn_ptr_in_data(executable.get(), onNewProc_addr);
             plugin_log("[SC_PATCH] onNewProcess=0x%llx pOnNewProcess=0x%llx",
