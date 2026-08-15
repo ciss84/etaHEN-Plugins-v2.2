@@ -610,8 +610,12 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
 //    4. Vérifie le mount via access("/data", R_OK)
 // ─────────────────────────────────────────────────────────────────────────────
 
-#include <sys/mount.h>  // statfs
-#include <errno.h>
+// Ne pas inclure <errno.h> ici — errno est un macro qui casse les member
+// initializer lists de spawner.cpp/elf.cpp ("errno(...)" → expansion invalide).
+// On passe par __error() directement, équivalent PS5/FreeBSD.
+#include <sys/mount.h>  // statfs, MNT_FORCE
+extern "C" int *__error(void);
+static inline int sc_errno() { return *__error(); }
 
 static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
 {
@@ -641,7 +645,7 @@ static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
                    sfs.f_fstypename);
         // unmount propre avant de remonter
         if (unmount("/data", MNT_FORCE) != 0) {
-            plugin_log("[SC_MOUNT] unmount /data echoue errno=%d", errno);
+            plugin_log("[SC_MOUNT] unmount /data echoue errno=%d", sc_errno());
         }
     }
 
@@ -657,13 +661,13 @@ static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
 
     const int r = nmount(iov, sizeof(iov) / sizeof(iov[0]), 0);
     if (r != 0) {
-        plugin_log("[SC_MOUNT] nmount echoue errno=%d", errno);
+        plugin_log("[SC_MOUNT] nmount echoue errno=%d", sc_errno());
         return false;
     }
 
     // ── 4. Vérifier que le mount est effectif ─────────────────────────────────
     if (access("/data", R_OK) != 0) {
-        plugin_log("[SC_MOUNT] mount OK mais /data inaccessible errno=%d", errno);
+        plugin_log("[SC_MOUNT] mount OK mais /data inaccessible errno=%d", sc_errno());
         return false;
     }
 
