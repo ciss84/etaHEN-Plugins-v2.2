@@ -479,9 +479,6 @@ static uintptr_t sc_scan_getappinfo(uintptr_t sc_base, uint64_t sc_size,
     return 0;
 }
 
-// ── Global shellcore pid — accessible après patchShellCore() ──────────────────
-static pid_t g_ShellCorePid = 0;
-
 // ── patchShellCore — adapté depuis cpp_service.cpp::patchShellCore() ──────────
 //  Structure identique à l'original : pas de suspend/resume, écriture directe,
 //  table de patterns à la place du switch, fix du bug return (status → ok).
