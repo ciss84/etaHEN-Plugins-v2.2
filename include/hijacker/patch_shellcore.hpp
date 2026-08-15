@@ -21,6 +21,8 @@
 extern "C" {
     int nmount(struct iovec *iov, unsigned int niov, int flags);
     int unmount(const char *path, int flags);
+    // Porté depuis cpp_service.cpp — plus fiable que le scan sysctl seul
+    int sceKernelGetProcessName(int pid, char *out);
 }
 
 extern void plugin_log(const char* fmt, ...);
@@ -129,7 +131,8 @@ static bool sc_bytes_already_patched(const uint8_t *at, const char *expected_hex
     return memcmp(at, expected, len) == 0;
 }
 
-static pid_t sc_find_shellcore_pid()
+// Fallback sysctl — même approche que find_pid() dans cpp_service.cpp
+static pid_t sc_find_pid_sysctl(const char *name)
 {
     int      mib[4] = {1, 14, 8, 0};
     size_t   buf_size;
@@ -145,10 +148,28 @@ static pid_t sc_find_shellcore_pid()
         pid_t ki_pid        = *(pid_t *)&ptr[72];
         char *ki_tdname     = (char *)&ptr[447];
         ptr += ki_structsize;
-        if (!strcmp("SceShellCore", ki_tdname)) { pid = ki_pid; break; }
+        if (!strcmp(name, ki_tdname)) { pid = ki_pid; break; }
     }
     free(buf);
     return pid;
+}
+
+// Porté depuis cpp_service.cpp get_shellcore_pid() :
+//   1. Boucle sceKernelGetProcessName jusqu'à PID 9999 (plus fiable)
+//   2. Fallback sysctl si API SCE échoue
+static pid_t sc_find_shellcore_pid()
+{
+    char tmp[512];
+    for (int j = 0; j <= 9999; j++) {
+        memset(tmp, 0, sizeof(tmp));
+        if (sceKernelGetProcessName(j, tmp) == 0 &&
+            strcmp("SceShellCore", tmp) == 0) {
+            plugin_log("[SC_PATCH] SceShellCore via sceKernelGetProcessName pid=%d", j);
+            return (pid_t)j;
+        }
+    }
+    plugin_log("[SC_PATCH] sceKernelGetProcessName loop failed, fallback sysctl");
+    return sc_find_pid_sysctl("SceShellCore");
 }
 
 static uintptr_t sc_find_fn_ptr_in_data(Hijacker *exe, uintptr_t fn_addr)
