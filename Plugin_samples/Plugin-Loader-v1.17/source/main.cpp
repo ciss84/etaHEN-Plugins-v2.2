@@ -447,6 +447,12 @@ int main()
     uint32_t fw_minor = (fw >> 16) & 0xFF;
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
+
+    /*if (!patch_shellcore_for_data()) {
+       plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    }
+    usleep(750000);*/
+    // ─────────────────────────────────────────────────────────────────────
         
     // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
     // TEST: variante mount (nullfs /user/data -> /data), voir patch_shellcore.hpp
