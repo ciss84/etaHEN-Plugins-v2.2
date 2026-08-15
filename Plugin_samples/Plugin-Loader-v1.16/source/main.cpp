@@ -436,7 +436,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.16.1 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.17 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -448,10 +448,10 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
     
-    if (!patch_shellcore_for_data()) {
+    /*if (!patch_shellcore_for_data()) {
        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
     }
-    usleep(750000); 
+    usleep(750000);*/
     // ─────────────────────────────────────────────────────────────────────
         
     // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
@@ -492,7 +492,7 @@ int main()
         return -1;
     }
 
-    //printf_notification("Prx-Loader FW: %x.%02x                      \nVer:1.16.1 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("Prx-Loader FW: %x.%02x                      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
     printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
