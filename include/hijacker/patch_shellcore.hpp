@@ -1,7 +1,7 @@
 #pragma once
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  patch_shellcore.hpp — active /data en sandbox + hook onNewProcess
+//  patch_shellcore.hpp — active /data en sandbox + patches SceShellCore
 //  Porté depuis etaHEN (cpp_service.cpp / util daemon)
 //  A inclure depuis hijacker/patch_shellcore.hpp (via utils.hpp)
 //  IMPORTANT: inclure APRES hijacker/hijacker.hpp
@@ -70,106 +70,6 @@ static constexpr uint32_t SC_V1220 = 0x12200000;
 static constexpr uint32_t SC_V1240 = 0x12400000;
 static constexpr uint32_t SC_V1260 = 0x12600000;
 static constexpr uint32_t SC_V1270 = 0x12700000;
-
-// ── Table patterns /data sandbox (4.xx → 12.xx) ──────────────────────────────
-//  pat1/pat2    : appels à patcher → "b8 01 00 00 00"
-//  pat_checker  : fonction sandbox checker → CHECKER_PATCH_BYTES (nullptr = skip)
-struct sc_patch_set {
-    uint32_t    fw_min;
-    uint32_t    fw_max;
-    const char *pat1;
-    const char *pat2;
-    const char *pat_checker;
-};
-
-static const sc_patch_set sc_patch_table[] = {
-    {
-        SC_V400, SC_V451,
-        "e8 ?? ?? ?? ?? 4c 89 bd ?? ?? ?? ?? 48 89 9d ?? ?? ?? ??",
-        "e8 ?? ?? ?? ?? 83 f8 01 75 ?? 41 80 3c 24 00",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec 00 02 00 00 49",
-    },
-    {
-        SC_V500, SC_V550,
-        "e8 ?? ?? fb 00 85 c0 75 0d e8 ?? ?? fb 00 85 c0 0f 84 47",
-        "e8 ?? ?? c7 00 83 f8 01 75 5e",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49",
-    },
-    {
-        SC_V600, SC_V650,
-        "e8 ?? ?? ?? 01 4c 89 a5 80",
-        "e8 ?? ?? ?? 00 83 f8 01 75 66",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49",
-    },
-    {
-        SC_V700, SC_V761,
-        "e8 ?? ?? ?? 01 4c 89 b5 80",
-        "e8 ?? ?? d7 00 83 f8 01 0f 85 cd",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd",
-    },
-    {
-        SC_V800, SC_V860,
-        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1",
-        "e8 ?? ?? dc 00 83 f8 01 0f",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd",
-    },
-    {
-        SC_V900, SC_V960,
-        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 9a",
-        "e8 ?? ?? e2 00 83 f8 01 0f 85",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd",
-    },
-    {
-        SC_V1000, SC_V1060,
-        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 10 06 00 00",
-        "e8 ?? ?? e2 00 83 f8 01 0f 85",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89",
-    },
-    {
-        SC_V1100, SC_V1160,
-        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
-        "e8 ?? ?? e2 00 83 f8 01 0f 85",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
-    },
-    {
-        SC_V1200, SC_V1260,
-        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
-        "e8 ?? ?? e2 00 83 f8 01 0f 85",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
-    },
-    {
-        SC_V1270, SC_V1270,
-        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
-        "e8 ?? ?? e3 00 83 f8 01 0f 85",
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
-    },
-};
-
-// ── Table patterns onNewProcess (4.xx → 12.xx) ────────────────────────────────
-//  Portés depuis etaHEN patchOnNewProcess() ps5_patterns[].
-struct sc_newproc_pattern {
-    uint32_t    fw_min;
-    uint32_t    fw_max;
-    const char *pat;
-};
-
-static const sc_newproc_pattern sc_newproc_table[] = {
-    {
-        // 4.xx → 10.xx
-        SC_V400, SC_V1060,
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 49 89 ?? bf 18 00 00 00 49 89 d6 49 89 f5",
-    },
-    {
-        // 11.xx
-        SC_V1100, SC_V1160,
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 50 49 89 fd bf 18 00 00 00 49 89 d7 49 89 f4 e8 ?? ?? ?? ??",
-    },
-    {
-        // 12.xx
-        SC_V1200, SC_V1270,
-        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 49 89 fd bf 18 00 00 00 49 89 d6 49 89 f4 e8 ?? ?? ?? ??",
-    },
-};
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
@@ -283,6 +183,183 @@ static uintptr_t sc_find_fn_ptr_in_data(Hijacker *exe, uintptr_t fn_addr)
     return result;
 }
 
+// ── Table patterns /data sandbox (4.xx → 12.xx) ──────────────────────────────
+//  pat1/pat2    : appels à patcher → "b8 01 00 00 00"
+//  pat_checker  : fonction sandbox checker → CHECKER_PATCH_BYTES (nullptr = skip)
+struct sc_patch_set {
+    uint32_t    fw_min;
+    uint32_t    fw_max;
+    const char *pat1;
+    const char *pat2;
+    const char *pat_checker;
+};
+
+static const sc_patch_set sc_patch_table[] = {
+    {
+        SC_V400, SC_V451,
+        "e8 ?? ?? ?? ?? 4c 89 bd ?? ?? ?? ?? 48 89 9d ?? ?? ?? ??",
+        "e8 ?? ?? ?? ?? 83 f8 01 75 ?? 41 80 3c 24 00",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec 00 02 00 00 49",
+    },
+    {
+        SC_V500, SC_V550,
+        "e8 ?? ?? fb 00 85 c0 75 0d e8 ?? ?? fb 00 85 c0 0f 84 47",
+        "e8 ?? ?? c7 00 83 f8 01 75 5e",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49",
+    },
+    {
+        SC_V600, SC_V650,
+        "e8 ?? ?? ?? 01 4c 89 a5 80",
+        "e8 ?? ?? ?? 00 83 f8 01 75 66",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49",
+    },
+    {
+        SC_V700, SC_V761,
+        "e8 ?? ?? ?? 01 4c 89 b5 80",
+        "e8 ?? ?? d7 00 83 f8 01 0f 85 cd",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 e4 e0 48 81 ec e0 01 00 00 49 89 cd",
+    },
+    {
+        SC_V800, SC_V860,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 c1",
+        "e8 ?? ?? dc 00 83 f8 01 0f",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd",
+    },
+    {
+        SC_V900, SC_V960,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 9a",
+        "e8 ?? ?? e2 00 83 f8 01 0f 85",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89 cd",
+    },
+    {
+        SC_V1000, SC_V1060,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 10 06 00 00",
+        "e8 ?? ?? e2 00 83 f8 01 0f 85",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 49 89",
+    },
+    {
+        SC_V1100, SC_V1160,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
+        "e8 ?? ?? e2 00 83 f8 01 0f 85",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
+    },
+    {
+        SC_V1200, SC_V1260,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
+        "e8 ?? ?? e2 00 83 f8 01 0f 85",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
+    },
+    {
+        SC_V1270, SC_V1270,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
+        "e8 ?? ?? e3 00 83 f8 01 0f 85",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
+    },
+};
+
+// ── Table patterns onNewProcess (4.xx → 12.xx) ────────────────────────────────
+//  Portés depuis etaHEN patchOnNewProcess() ps5_patterns[].
+struct sc_newproc_pattern {
+    uint32_t    fw_min;
+    uint32_t    fw_max;
+    const char *pat;
+};
+
+static const sc_newproc_pattern sc_newproc_table[] = {
+    {
+        // 4.xx → 10.xx
+        SC_V400, SC_V1060,
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 49 89 ?? bf 18 00 00 00 49 89 d6 49 89 f5",
+    },
+    {
+        // 11.xx
+        SC_V1100, SC_V1160,
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 50 49 89 fd bf 18 00 00 00 49 89 d7 49 89 f4 e8 ?? ?? ?? ??",
+    },
+    {
+        // 12.xx
+        SC_V1200, SC_V1270,
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 49 89 fd bf 18 00 00 00 49 89 d6 49 89 f4 e8 ?? ?? ?? ??",
+    },
+};
+
+// ── Table patterns AppTimeout (PS5 only, tous FW) ─────────────────────────────
+//  Porté depuis etaHEN patchAppTimeoutForMonitoredProcs().
+//  Patch : jb → jmp (0x48 0xe9) pour supprimer le timeout des process monitorés.
+//  Pattern unique, pas de range FW — fonctionne sur toute la plage 4.xx→12.xx.
+static constexpr const char *SC_PAT_APPTIMEOUT =
+    "83 f8 0b 0f 82 ?? ?? ?? ?? 42 8b 44 23 f0";
+static constexpr size_t      SC_PAT_APPTIMEOUT_OFFSET = 3;
+static constexpr const char *SC_PATCH_APPTIMEOUT = "48 e9";
+
+// ── Table patterns MountRoot (4.xx → 9.xx+) ──────────────────────────────────
+//  Portés depuis etaHEN patchMountRoot().
+//  Localise le call vers mount_root dans SceShellCore pour hook futur.
+//  NOTE: hook réel nécessite pid_write_call + frame/shellcode (non implémenté ici).
+struct sc_mountroot_pattern {
+    const char *pat;
+    size_t      offset;  // offset depuis début du match jusqu'au call à hooker
+    const char *fw_comment;
+};
+
+static const sc_mountroot_pattern sc_mountroot_table[] = {
+    {
+        "48 8d 35 ?? ?? ?? ?? 48 8d 15 ?? ?? ?? ?? 48 8d 0d ?? ?? ?? ?? 4c 8d 8d ?? ?? ?? ?? c7 85 ?? ?? ?? ?? ff ff ff ff 45 31 c0 c6 85 ?? ?? ?? ?? 00 e8 ?? ?? ?? ??",
+        48,
+        "4.xx-5.50, 9.xx+",
+    },
+    {
+        "8d 35 ?? ?? ?? ?? 48 8d 15 ?? ?? ?? ?? 48 8d 0d ?? ?? ?? ?? 4c 8d 8d ?? ?? ?? ?? 45 31 c0 6a 00 53 e8 ?? ?? ?? ??",
+        33,
+        "6.xx",
+    },
+    {
+        "8d 35 ?? ?? ?? ?? 48 8d 15 ?? ?? ?? ?? 48 8d 0d ?? ?? ?? ?? 4c 8d 8d ?? ?? ?? ?? 45 31 c0 6a 00 48 8d 05 ?? ?? ?? ?? 50 e8 ?? ?? ?? ??",
+        40,
+        "7.xx-8.xx",
+    },
+};
+
+// ── Table patterns GetAppInfoSfo (4.xx → 12.xx) ──────────────────────────────
+//  Portés depuis etaHEN patchGetAppInfoSfo() ps5_patterns[].
+//  Localise le call vers getAppInfoFromDB dans SceShellCore pour hook futur.
+//  NOTE: hook réel nécessite pid_write_call + frame/shellcode (non implémenté ici).
+struct sc_getappinfo_pattern {
+    const char *pat;
+    size_t      offset;  // offset depuis début du match jusqu'au call à hooker
+    const char *fw_comment;
+};
+
+static const sc_getappinfo_pattern sc_getappinfo_table[] = {
+    {
+        "e8 ?? ?? ?? ?? 48 8b 85 ?? ?? ?? ?? 4c 89 ?? ?? 89 ?? 48 8b 70 10 e8 ?? ?? ?? ??",
+        22,
+        "4.xx-6.xx & 8.xx",
+    },
+    {
+        "49 8b 76 10 4c 89 ef 4c 89 e2 e8 ?? ?? ?? ?? 85 c0 0f 89",
+        10,
+        "7.xx",
+    },
+    {
+        "48 8b 85 ?? ?? ?? ?? 48 8d 75 ?? 4c 89 ef 4c 89 ?? 48 8b 50 10 e8 ?? ?? ?? ?? 41 89 ??",
+        21,
+        "9.xx-10.xx",
+    },
+    {
+        "49 8b 55 10 48 8b bd ?? ?? ?? ?? 48 8d 75 ?? 4c 89 e1 e8 ?? ?? ?? ?? 41 89 c6",
+        18,
+        "11.xx",
+    },
+    {
+        "49 8b 55 10 48 8b bd ?? ?? ?? ?? 48 8b 8d ?? ?? ?? ?? 48 8d 75 ?? e8 ?? ?? ?? ?? 41 89 c6",
+        22,
+        "12.xx",
+    },
+};
+
+// ── sc_find_on_new_process ────────────────────────────────────────────────────
+
 static uintptr_t sc_find_on_new_process(Hijacker *exe,
                                         uintptr_t sc_base, uint64_t sc_size,
                                         const uint8_t *copy, uint32_t fw_masked)
@@ -299,6 +376,75 @@ static uintptr_t sc_find_on_new_process(Hijacker *exe,
         plugin_log("[SC_NEWPROC] pattern FW %08x-%08x not found", e.fw_min, e.fw_max);
     }
     plugin_log("[SC_NEWPROC] onNewProcess not found for FW 0x%08x", fw_masked);
+    return 0;
+}
+
+// ── sc_patch_app_timeout ──────────────────────────────────────────────────────
+//  Porté depuis etaHEN patchAppTimeoutForMonitoredProcs().
+//  Patch le timeout des process monitorés : jb → jmp (0f 82 → 48 e9).
+//  Appliqué uniquement sur PS5 (pas de guard is_ps4 ici, on est toujours PS5).
+
+static void sc_patch_app_timeout(Hijacker *exe,
+                                 uintptr_t sc_base, uint64_t sc_size,
+                                 const uint8_t *copy)
+{
+    uint8_t *found = sc_pattern_scan(copy, sc_size, SC_PAT_APPTIMEOUT);
+    if (!found) {
+        plugin_log("[SC_TIMEOUT] pattern non trouve, skip");
+        return;
+    }
+
+    // offset 3 : on saute les 3 premiers bytes (83 f8 0b) pour atterrir sur le jb
+    uint8_t *target = found + SC_PAT_APPTIMEOUT_OFFSET;
+
+    if (sc_bytes_already_patched(target, SC_PATCH_APPTIMEOUT)) {
+        plugin_log("[SC_TIMEOUT] deja patche, skip");
+        return;
+    }
+
+    uint64_t addr = sc_base + (uint64_t)(target - copy);
+    sc_write_hex(exe, addr, SC_PATCH_APPTIMEOUT);
+    plugin_log("[SC_TIMEOUT] patched app timeout @ 0x%llx", addr);
+}
+
+// ── sc_scan_mount_root ────────────────────────────────────────────────────────
+//  Porté depuis etaHEN patchMountRoot().
+//  Scan seulement — le hook réel (pid_write_call + frame) est un TODO.
+
+static uintptr_t sc_scan_mount_root(uintptr_t sc_base, uint64_t sc_size,
+                                    const uint8_t *copy)
+{
+    for (const auto& e : sc_mountroot_table) {
+        uint8_t *found = sc_pattern_scan(copy, sc_size, e.pat);
+        if (found) {
+            uintptr_t call_addr = sc_base + (uintptr_t)(found - copy) + e.offset;
+            plugin_log("[SC_MOUNTROOT] call site @ 0x%llx (%s)", call_addr, e.fw_comment);
+            // TODO: pid_write_call(call_addr, hook_addr) + save original
+            return call_addr;
+        }
+    }
+    plugin_log("[SC_MOUNTROOT] non trouve");
+    return 0;
+}
+
+// ── sc_scan_getappinfo ────────────────────────────────────────────────────────
+//  Porté depuis etaHEN patchGetAppInfoSfo().
+//  Scan seulement — le hook réel (pid_write_call + frame) est un TODO.
+
+static uintptr_t sc_scan_getappinfo(uintptr_t sc_base, uint64_t sc_size,
+                                    const uint8_t *copy)
+{
+    for (size_t i = 0; i < sizeof(sc_getappinfo_table)/sizeof(sc_getappinfo_table[0]); i++) {
+        const auto& e = sc_getappinfo_table[i];
+        uint8_t *found = sc_pattern_scan(copy, sc_size, e.pat);
+        if (found) {
+            uintptr_t call_addr = sc_base + (uintptr_t)(found - copy) + e.offset;
+            plugin_log("[SC_GETAPPINFO] call site @ 0x%llx (%s)", call_addr, e.fw_comment);
+            // TODO: pid_write_call(call_addr, hook_addr) + save original
+            return call_addr;
+        }
+    }
+    plugin_log("[SC_GETAPPINFO] non trouve");
     return 0;
 }
 
@@ -345,6 +491,7 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         return false;
     }
 
+    // ── Lookup /data sandbox dans le tableau ──────────────────────────────────
     const char *pat1        = nullptr;
     const char *pat2        = nullptr;
     const char *pat_checker = nullptr;
@@ -363,6 +510,7 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         return false;
     }
 
+    // ── Lecture locale du text ────────────────────────────────────────────────
     uint8_t *copy = (uint8_t *)malloc(sc_size);
     if (!copy) { plugin_log("[SC_PATCH] malloc failed"); return false; }
 
@@ -383,8 +531,10 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
 
     bool ok = false;
 
+    // ── Suspend SceShellCore avant toutes les écritures ───────────────────────
     exe->suspend();
 
+    // ── /data sandbox patches ─────────────────────────────────────────────────
     if (found1 && found2) {
         bool already1 = sc_bytes_already_patched(found1, PATCH_BYTES);
         bool already2 = sc_bytes_already_patched(found2, PATCH_BYTES);
@@ -419,6 +569,14 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
         plugin_log("[SC_PATCH] checker non trouve (non fatal)");
     }
 
+    // ── App timeout patch (etaHEN: patchAppTimeoutForMonitoredProcs) ──────────
+    sc_patch_app_timeout(exe.get(), sc_base, sc_size, copy);
+
+    // ── Scan MountRoot + GetAppInfoSfo (call sites loggés, hook = TODO) ───────
+    sc_scan_mount_root(sc_base, sc_size, copy);
+    sc_scan_getappinfo(sc_base, sc_size, copy);
+
+    // ── onNewProcess : localiser pour hook PRX injection ──────────────────────
     uintptr_t onNewProc_addr = sc_find_on_new_process(exe.get(), sc_base, sc_size, copy, fw_masked);
     if (onNewProc_addr) {
         uintptr_t ptr_addr = sc_find_fn_ptr_in_data(exe.get(), onNewProc_addr);
@@ -428,6 +586,7 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
     }
 
     exe->resume();
+    // ─────────────────────────────────────────────────────────────────────────
 
     free(copy);
 
@@ -443,27 +602,72 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
 //  EXPERIMENTAL — nmount nullfs /user/data -> /data
 //  Ne bypass PAS le check de permission SceShellCore.
 //  A combiner avec patch_shellcore_for_data() pour le FTP dev access.
+//
+//  Flow :
+//    1. Crée /user/data + sous-dossiers si absents
+//    2. Vérifie si /data est déjà monté (statfs) → skip si oui
+//    3. Monte /user/data sur /data via nullfs
+//    4. Vérifie le mount via access("/data", R_OK)
 // ─────────────────────────────────────────────────────────────────────────────
+
+#include <sys/mount.h>  // statfs
+#include <errno.h>
+
 static bool patch_shellcore_for_data_via_mount(bool allow_ftp_dev_access = true)
 {
     if (!allow_ftp_dev_access) {
-        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS disabled, skipping patch");
+        plugin_log("[SC_MOUNT] ALLOW_FTP_DEV_ACCESS disabled, skip");
         return false;
     }
 
-    #define SC_IOVEC_ENTRY(x) {(char *)(x), strlen(x) + 1}
-    struct iovec iov[] = {
-        SC_IOVEC_ENTRY("fstype"), SC_IOVEC_ENTRY("nullfs"),
-        SC_IOVEC_ENTRY("fspath"), SC_IOVEC_ENTRY("/data"),
-        SC_IOVEC_ENTRY("target"), SC_IOVEC_ENTRY("/user/data"),
+    static bool done = false;
+    if (done) return true;
+
+    // ── 1. Créer la source /user/data + sous-dossiers ─────────────────────────
+    mkdir("/user/data",             0777);
+    mkdir("/user/data/PluginLoader", 0777);
+    plugin_log("[SC_MOUNT] /user/data source prête");
+
+    // ── 2. Vérifier si /data est déjà monté en nullfs ─────────────────────────
+    struct statfs sfs;
+    if (statfs("/data", &sfs) == 0) {
+        if (strcmp(sfs.f_fstypename, "nullfs") == 0) {
+            plugin_log("[SC_MOUNT] /data deja monte en nullfs (f_mntonname=%s), skip",
+                       sfs.f_mntonname);
+            done = true;
+            return true;
+        }
+        plugin_log("[SC_MOUNT] /data existe mais fstype=%s, tentative remount",
+                   sfs.f_fstypename);
+        // unmount propre avant de remonter
+        if (unmount("/data", MNT_FORCE) != 0) {
+            plugin_log("[SC_MOUNT] unmount /data echoue errno=%d", errno);
+        }
+    }
+
+    // ── 3. nmount nullfs /user/data → /data ───────────────────────────────────
+    auto mk_iov = [](const char *s) -> struct iovec {
+        return { (void *)s, strlen(s) + 1 };
     };
-    #undef SC_IOVEC_ENTRY
+    struct iovec iov[] = {
+        mk_iov("fstype"),  mk_iov("nullfs"),
+        mk_iov("fspath"),  mk_iov("/data"),
+        mk_iov("target"),  mk_iov("/user/data"),
+    };
 
     const int r = nmount(iov, sizeof(iov) / sizeof(iov[0]), 0);
     if (r != 0) {
-        plugin_log("[SC_PATCH_TEST] nmount /user/data -> /data echoue: %d", r);
+        plugin_log("[SC_MOUNT] nmount echoue errno=%d", errno);
         return false;
     }
-    plugin_log("[SC_PATCH_TEST] /user/data monte sur /data (nullfs) OK");
+
+    // ── 4. Vérifier que le mount est effectif ─────────────────────────────────
+    if (access("/data", R_OK) != 0) {
+        plugin_log("[SC_MOUNT] mount OK mais /data inaccessible errno=%d", errno);
+        return false;
+    }
+
+    plugin_log("[SC_MOUNT] /user/data monte sur /data (nullfs) OK");
+    done = true;
     return true;
 }
