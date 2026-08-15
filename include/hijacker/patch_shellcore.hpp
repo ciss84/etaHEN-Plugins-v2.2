@@ -138,6 +138,9 @@ static bool sc_bytes_already_patched(const uint8_t *at, const char *expected_hex
     return memcmp(at, expected, len) == 0;
 }
 
+// Global shellcore pid — déclaré ici pour être accessible dans sc_find_fn_ptr_in_data
+static pid_t g_ShellCorePid = 0;
+
 // Fallback sysctl — même approche que find_pid() dans cpp_service.cpp
 static pid_t sc_find_pid_sysctl(const char *name)
 {
