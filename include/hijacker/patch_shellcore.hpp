@@ -550,42 +550,28 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
     static constexpr const char *PATCH_BYTES         = "b8 01 00 00 00";
     static constexpr const char *CHECKER_PATCH_BYTES = "55 48 89 e5 b8 14 18 26 80 5d c3";
 
+    // ── Pas de suspend/resume — même comportement que cpp_service.cpp ─────────
+    // exe->suspend() laissait shellcore dans un état incorrect → PRX ne chargeait pas
+
     bool ok = false;
 
-    // ── Suspend SceShellCore avant toutes les écritures ───────────────────────
-    exe->suspend();
-
-    // ── /data sandbox patches ─────────────────────────────────────────────────
     if (found1 && found2) {
-        bool already1 = sc_bytes_already_patched(found1, PATCH_BYTES);
-        bool already2 = sc_bytes_already_patched(found2, PATCH_BYTES);
-
-        if (already1 && already2) {
-            plugin_log("[SC_PATCH] data1/data2 deja actifs, skip ecriture");
-            ok = true;
-        } else {
-            uint64_t off1 = sc_base + (uint64_t)(found1 - copy);
-            uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
-            if (!already1) sc_write_hex(exe.get(), off1, PATCH_BYTES);
-            if (!already2) sc_write_hex(exe.get(), off2, PATCH_BYTES);
-            plugin_log("[SC_PATCH] patched data1=0x%llx (skip=%d) data2=0x%llx (skip=%d)",
-                       off1, already1, off2, already2);
-            mkdir("/user/devbin", 0777);
-            mkdir("/user/devlog", 0777);
-            ok = true;
-        }
+        uint64_t off1 = sc_base + (uint64_t)(found1 - copy);
+        uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
+        sc_write_hex(exe.get(), off1, PATCH_BYTES);
+        sc_write_hex(exe.get(), off2, PATCH_BYTES);
+        plugin_log("[SC_PATCH] patched data1=0x%llx data2=0x%llx", off1, off2);
+        mkdir("/user/devbin", 0777);
+        mkdir("/user/devlog", 0777);
+        ok = true;
     } else {
         plugin_log("[SC_PATCH] patterns data1/data2 non trouves!");
     }
 
     if (checker) {
-        if (sc_bytes_already_patched(checker, CHECKER_PATCH_BYTES)) {
-            plugin_log("[SC_PATCH] checker deja actif, skip ecriture");
-        } else {
-            uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
-            sc_write_hex(exe.get(), off_chk, CHECKER_PATCH_BYTES);
-            plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
-        }
+        uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
+        sc_write_hex(exe.get(), off_chk, CHECKER_PATCH_BYTES);
+        plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
     } else {
         plugin_log("[SC_PATCH] checker non trouve (non fatal)");
     }
@@ -605,9 +591,6 @@ static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
                    onNewProc_addr, ptr_addr);
         // TODO: exe->write<uintptr_t>(ptr_addr, (uintptr_t)&my_hook);
     }
-
-    exe->resume();
-    // ─────────────────────────────────────────────────────────────────────────
 
     free(copy);
 
