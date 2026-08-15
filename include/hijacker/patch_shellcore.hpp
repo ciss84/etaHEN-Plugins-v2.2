@@ -159,11 +159,13 @@ static pid_t sc_find_pid_sysctl(const char *name)
 //   2. Fallback sysctl si API SCE échoue
 static pid_t sc_find_shellcore_pid()
 {
+    // Pas de check retour — identique à cpp_service::get_shellcore_pid()
+    // sceKernelGetProcessName peut retourner non-zero mais quand même écrire le nom
     char tmp[512];
     for (int j = 0; j <= 9999; j++) {
         memset(tmp, 0, sizeof(tmp));
-        if (sceKernelGetProcessName(j, tmp) == 0 &&
-            strcmp("SceShellCore", tmp) == 0) {
+        sceKernelGetProcessName(j, tmp);
+        if (strcmp("SceShellCore", tmp) == 0) {
             plugin_log("[SC_PATCH] SceShellCore via sceKernelGetProcessName pid=%d", j);
             return (pid_t)j;
         }
@@ -469,137 +471,151 @@ static uintptr_t sc_scan_getappinfo(uintptr_t sc_base, uint64_t sc_size,
     return 0;
 }
 
-// ── patch_shellcore_for_data ──────────────────────────────────────────────────
+// ── Global shellcore pid — accessible après patchShellCore() ──────────────────
+static pid_t g_ShellCorePid = 0;
 
-static bool patch_shellcore_for_data(bool allow_ftp_dev_access = true)
+// ── patchShellCore — adapté depuis cpp_service.cpp::patchShellCore() ──────────
+//  Structure identique à l'original : pas de suspend/resume, écriture directe,
+//  table de patterns à la place du switch, fix du bug return (status → ok).
+
+static bool patchShellCore(bool allow_ftp_dev_access = true)
 {
     if (!allow_ftp_dev_access) {
-        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS disabled, skipping patch");
+        plugin_log("[SC_PATCH] ALLOW_FTP_DEV_ACCESS disabled, skip");
         return false;
     }
     static bool done = false;
     if (done) return true;
 
-    uint32_t fw        = kernel_get_fw_version();
-    uint32_t fw_masked = fw & SC_VERSION_MASK;
-    plugin_log("[SC_PATCH] FW: 0x%08x (masked: 0x%08x)", fw, fw_masked);
+    // ── Hijacker — même flow que cpp_service ─────────────────────────────────
+    const UniquePtr<Hijacker> executable = Hijacker::getHijacker(sc_find_shellcore_pid());
+    uintptr_t shellcore_base = 0;
+    uint64_t  shellcore_size = 0;
 
-    pid_t sc_pid = sc_find_shellcore_pid();
-    if (sc_pid < 0) {
+    if (executable) {
+        shellcore_base = executable->getEboot()->getTextSection()->start();
+        shellcore_size = executable->getEboot()->getTextSection()->sectionLength();
+        g_ShellCorePid = executable->getPid();
+    } else {
         plugin_log("[SC_PATCH] SceShellCore not found!");
         return false;
     }
-    plugin_log("[SC_PATCH] SceShellCore pid: %d", sc_pid);
 
-    UniquePtr<Hijacker> exe = Hijacker::getHijacker(sc_pid);
-    if (!exe) {
-        plugin_log("[SC_PATCH] Hijacker::getHijacker failed");
+    plugin_log("[SC_PATCH] shellcore pid=%d base=0x%llx size=0x%llx",
+               g_ShellCorePid, shellcore_base, shellcore_size);
+
+    if (!shellcore_base || !shellcore_size)
         return false;
-    }
 
-    const SharedLibSection *text_sec = exe->getEboot()->getTextSection();
-    if (!text_sec) {
-        plugin_log("[SC_PATCH] getTextSection() returned null");
-        return false;
-    }
+    // ── Lookup dans le tableau de patterns ────────────────────────────────────
+    uint32_t fw_masked = kernel_get_fw_version() & SC_VERSION_MASK;
+    plugin_log("[SC_PATCH] FW masked: 0x%08x", fw_masked);
 
-    uintptr_t sc_base = text_sec->start();
-    uint64_t  sc_size = text_sec->sectionLength();
-    plugin_log("[SC_PATCH] text base=0x%llx size=0x%llx", sc_base, sc_size);
-
-    if (!sc_base || !sc_size) {
-        plugin_log("[SC_PATCH] invalid text section");
-        return false;
-    }
-
-    // ── Lookup /data sandbox dans le tableau ──────────────────────────────────
     const char *pat1        = nullptr;
     const char *pat2        = nullptr;
     const char *pat_checker = nullptr;
 
     for (const auto& e : sc_patch_table) {
         if (fw_masked >= e.fw_min && fw_masked <= e.fw_max) {
-            pat1        = e.pat1;
-            pat2        = e.pat2;
-            pat_checker = e.pat_checker;
+            pat1 = e.pat1; pat2 = e.pat2; pat_checker = e.pat_checker;
             break;
         }
     }
 
     if (!pat1) {
-        plugin_log("[SC_PATCH] FW 0x%08x non supporte (range: 4.xx-12.xx)", fw_masked);
+        plugin_log("[SC_PATCH] FW 0x%08x non supporte", fw_masked);
         return false;
     }
 
-    // ── Lecture locale du text ────────────────────────────────────────────────
-    uint8_t *copy = (uint8_t *)malloc(sc_size);
-    if (!copy) { plugin_log("[SC_PATCH] malloc failed"); return false; }
+    // ── Copie locale du text — même approche que cpp_service ──────────────────
+    plugin_log("[SC_PATCH] allocating 0x%llx bytes", shellcore_size);
+    uint8_t *shellcore_copy = (uint8_t *)malloc(shellcore_size);
+    plugin_log("[SC_PATCH] shellcore_copy: 0x%p", shellcore_copy);
 
-    if (!exe->read(sc_base, copy, sc_size)) {
-        plugin_log("[SC_PATCH] read text section failed");
-        free(copy);
+    if (!shellcore_copy) {
+        plugin_log("[SC_PATCH] shellcore_copy is nullptr");
         return false;
     }
-
-    uint8_t *found1  = sc_pattern_scan(copy, sc_size, pat1);
-    uint8_t *found2  = sc_pattern_scan(copy, sc_size, pat2);
-    uint8_t *checker = pat_checker ? sc_pattern_scan(copy, sc_size, pat_checker) : nullptr;
-
-    plugin_log("[SC_PATCH] found1=%p found2=%p checker=%p", found1, found2, checker);
-
-    static constexpr const char *PATCH_BYTES         = "b8 01 00 00 00";
-    static constexpr const char *CHECKER_PATCH_BYTES = "55 48 89 e5 b8 14 18 26 80 5d c3";
-
-    // ── Pas de suspend/resume — même comportement que cpp_service.cpp ─────────
-    // exe->suspend() laissait shellcore dans un état incorrect → PRX ne chargeait pas
 
     bool ok = false;
 
-    if (found1 && found2) {
-        uint64_t off1 = sc_base + (uint64_t)(found1 - copy);
-        uint64_t off2 = sc_base + (uint64_t)(found2 - copy);
-        sc_write_hex(exe.get(), off1, PATCH_BYTES);
-        sc_write_hex(exe.get(), off2, PATCH_BYTES);
-        plugin_log("[SC_PATCH] patched data1=0x%llx data2=0x%llx", off1, off2);
-        mkdir("/user/devbin", 0777);
-        mkdir("/user/devlog", 0777);
-        ok = true;
+    if (dbg::read(g_ShellCorePid, shellcore_base, shellcore_copy, shellcore_size)) {
+
+        uint8_t *shellcore_offset_data1 = sc_pattern_scan(shellcore_copy, shellcore_size, pat1);
+        uint8_t *shellcore_offset_data2 = sc_pattern_scan(shellcore_copy, shellcore_size, pat2);
+        uint8_t *patch_checker_offset   = pat_checker
+            ? sc_pattern_scan(shellcore_copy, shellcore_size, pat_checker)
+            : nullptr;
+
+        plugin_log("[SC_PATCH] data1=%p data2=%p checker=%p",
+                   shellcore_offset_data1, shellcore_offset_data2, patch_checker_offset);
+
+        // ── /data sandbox patches — écriture directe sans check préalable ─────
+        if (shellcore_offset_data1 && shellcore_offset_data2) {
+            const uint64_t off1 = shellcore_base +
+                ((uint64_t)shellcore_offset_data1 - (uint64_t)shellcore_copy);
+            const uint64_t off2 = shellcore_base +
+                ((uint64_t)shellcore_offset_data2 - (uint64_t)shellcore_copy);
+
+            sc_write_hex(executable.get(), off1, "b8 01 00 00 00");
+            sc_write_hex(executable.get(), off2, "b8 01 00 00 00");
+
+            plugin_log("[SC_PATCH] patched /data: data1=0x%llx data2=0x%llx", off1, off2);
+            plugin_log("[SC_PATCH] mkdir /user/devbin: %d  /user/devlog: %d",
+                       mkdir("/user/devbin", 0777), mkdir("/user/devlog", 0777));
+            ok = true;
+        } else {
+            plugin_log("[SC_PATCH] patterns data1/data2 non trouves!");
+        }
+
+        // ── Checker patch ─────────────────────────────────────────────────────
+        if (patch_checker_offset) {
+            const uint64_t off_chk = shellcore_base +
+                ((uint64_t)patch_checker_offset - (uint64_t)shellcore_copy);
+            sc_write_hex(executable.get(), off_chk,
+                         "55 48 89 e5 b8 14 18 26 80 5d c3");
+            plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
+        } else {
+            plugin_log("[SC_PATCH] checker non trouve (non fatal)");
+        }
+
+        // ── App timeout patch (etaHEN: patchAppTimeoutForMonitoredProcs) ──────
+        sc_patch_app_timeout(executable.get(), shellcore_base, shellcore_size, shellcore_copy);
+
+        // ── Scans MountRoot + GetAppInfoSfo (TODO hook) ───────────────────────
+        sc_scan_mount_root(shellcore_base, shellcore_size, shellcore_copy);
+        sc_scan_getappinfo(shellcore_base, shellcore_size, shellcore_copy);
+
+        // ── onNewProcess : localiser pour hook PRX injection ──────────────────
+        uintptr_t onNewProc_addr = sc_find_on_new_process(
+            executable.get(), shellcore_base, shellcore_size, shellcore_copy, fw_masked);
+        if (onNewProc_addr) {
+            uintptr_t ptr_addr = sc_find_fn_ptr_in_data(executable.get(), onNewProc_addr);
+            plugin_log("[SC_PATCH] onNewProcess=0x%llx pOnNewProcess=0x%llx",
+                       onNewProc_addr, ptr_addr);
+            // TODO: executable->write<uintptr_t>(ptr_addr, (uintptr_t)&my_hook);
+        }
     } else {
-        plugin_log("[SC_PATCH] patterns data1/data2 non trouves!");
+        plugin_log("[SC_PATCH] dbg::read shellcore failed");
     }
 
-    if (checker) {
-        uint64_t off_chk = sc_base + (uint64_t)(checker - copy);
-        sc_write_hex(exe.get(), off_chk, CHECKER_PATCH_BYTES);
-        plugin_log("[SC_PATCH] patched checker=0x%llx", off_chk);
-    } else {
-        plugin_log("[SC_PATCH] checker non trouve (non fatal)");
+    if (shellcore_copy) {
+        plugin_log("[SC_PATCH] freeing shellcore_copy 0x%p", shellcore_copy);
+        free(shellcore_copy);
+        shellcore_copy = nullptr;
     }
-
-    // ── App timeout patch (etaHEN: patchAppTimeoutForMonitoredProcs) ──────────
-    sc_patch_app_timeout(exe.get(), sc_base, sc_size, copy);
-
-    // ── Scan MountRoot + GetAppInfoSfo (call sites loggés, hook = TODO) ───────
-    sc_scan_mount_root(sc_base, sc_size, copy);
-    sc_scan_getappinfo(sc_base, sc_size, copy);
-
-    // ── onNewProcess : localiser pour hook PRX injection ──────────────────────
-    uintptr_t onNewProc_addr = sc_find_on_new_process(exe.get(), sc_base, sc_size, copy, fw_masked);
-    if (onNewProc_addr) {
-        uintptr_t ptr_addr = sc_find_fn_ptr_in_data(exe.get(), onNewProc_addr);
-        plugin_log("[SC_PATCH] onNewProcess=0x%llx pOnNewProcess=0x%llx",
-                   onNewProc_addr, ptr_addr);
-        // TODO: exe->write<uintptr_t>(ptr_addr, (uintptr_t)&my_hook);
-    }
-
-    free(copy);
 
     if (ok) {
         done = true;
         plugin_log("[SC_PATCH] /data sandbox enabled OK");
     }
 
-    return ok;
+    return ok;  // cpp_service avait "return status" (toujours false) — bug fixé ici
+}
+
+// Alias pour compatibilité avec l'ancien nom d'appel dans utils.cpp
+static inline bool patch_shellcore_for_data(bool allow_ftp_dev_access = true) {
+    return patchShellCore(allow_ftp_dev_access);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
