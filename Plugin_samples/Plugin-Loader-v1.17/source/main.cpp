@@ -448,10 +448,10 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
-    /*if (!patch_shellcore_for_data()) {
+    if (!patch_shellcore_for_data()) {
        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
     }
-    usleep(750000);*/
+    usleep(750000);
     // ─────────────────────────────────────────────────────────────────────
         
     // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
