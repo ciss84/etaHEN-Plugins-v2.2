@@ -75,42 +75,48 @@ static constexpr uint32_t SC_V1270 = 0x12700000;
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
-static int sc_pattern_to_byte(const char *sig, uint8_t *out)
+// ── Pattern scanning — copie exacte de cpp_service.cpp ───────────────────────
+//  sc_pattern_to_byte : parse "e8 ?? ?? 01" → bytes (0xff = wildcard)
+//  sc_pattern_scan    : scan buffer copy, retourne ptr dans copy ou nullptr
+
+static uint32_t sc_pattern_to_byte(const char *pattern, uint8_t *bytes)
 {
-    int len = 0;
-    const char *p = sig;
-    while (*p) {
-        while (*p == ' ') p++;
-        if (!*p) break;
-        if (p[0] == '?' && (p[1] == '?' || p[1] == ' ' || !p[1])) {
-            out[len++] = 0xff;
-            p += (p[1] == '?') ? 2 : 1;
+    uint32_t count = 0;
+    const char *start = pattern;
+    const char *end   = pattern + strlen(pattern);
+
+    for (const char *current = start; current < end; ++current) {
+        if (*current == '?') {
+            ++current;
+            if (*current == '?')
+                ++current;
+            bytes[count++] = 0xff;
         } else {
-            auto hex = [](char c) -> uint8_t {
-                if (c >= '0' && c <= '9') return c - '0';
-                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-                return 0;
-            };
-            out[len++] = (hex(p[0]) << 4) | hex(p[1]);
-            p += 2;
+            bytes[count++] = (uint8_t)strtoul(current, (char **)&current, 16);
         }
     }
-    return len;
+    return count;
 }
 
 static uint8_t *sc_pattern_scan(const uint8_t *base, uint64_t size, const char *sig)
 {
-    uint8_t pat[256];
-    int plen = sc_pattern_to_byte(sig, pat);
-    if (plen <= 0) return nullptr;
+    uint8_t patternBytes[256];
+    memset(patternBytes, 0, sizeof(patternBytes));
+    int32_t patternLength = (int32_t)sc_pattern_to_byte(sig, patternBytes);
 
-    for (uint64_t i = 0; i + (uint64_t)plen <= size; i++) {
-        bool ok = true;
-        for (int j = 0; j < plen; j++) {
-            if (pat[j] != 0xff && base[i + j] != pat[j]) { ok = false; break; }
+    if (patternLength <= 0 || patternLength >= 256)
+        return nullptr;
+
+    for (uint64_t i = 0; i < size; ++i) {
+        bool found = true;
+        for (int32_t j = 0; j < patternLength; ++j) {
+            if (base[i + j] != patternBytes[j] && patternBytes[j] != 0xff) {
+                found = false;
+                break;
+            }
         }
-        if (ok) return (uint8_t *)(base + i);
+        if (found)
+            return (uint8_t *)&base[i];
     }
     return nullptr;
 }
@@ -118,8 +124,8 @@ static uint8_t *sc_pattern_scan(const uint8_t *base, uint64_t size, const char *
 static void sc_write_hex(Hijacker *exe, uint64_t addr, const char *hex)
 {
     uint8_t buf[64];
-    int len = sc_pattern_to_byte(hex, buf);
-    if (len <= 0) return;
+    uint32_t len = sc_pattern_to_byte(hex, buf);
+    if (len == 0) return;
     exe->write(addr, buf, (size_t)len);
 }
 
