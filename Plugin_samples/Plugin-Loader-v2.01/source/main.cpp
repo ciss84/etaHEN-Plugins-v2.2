@@ -468,24 +468,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
     sleep(delay_sec);
     int success_count = 0;
     if (kill(pid, 0) == 0 && pt_attach(pid) == 0) { 
-        if (jb_pid(pid) == 0) {
-            sceKernelPrepareToSuspendProcess(pid);
-            sceKernelSuspendProcess(pid);
-            usleep(750000);  
+        if (jb_pid(pid) == 0) { 
             for (const auto &prx : prx_list) {
                 long ret = inject_prx(pid, prx.path.c_str());
                 int32_t rc = (int32_t)ret;
                 if (rc > 0) { 
                 success_count++;
-                sceKernelPrepareToResumeProcess(pid);
-                sceKernelResumeProcess(pid);                 
-                // Attends que le PRX se charge (~2-3 secondes)
-                sleep(3);
-               if (&prx != &prx_list.back()) {
-                    sceKernelPrepareToSuspendProcess(pid);
-                    sceKernelSuspendProcess(pid);
-                    usleep(2500000);
-                }
                 plugin_log("[INJ] OK modid=%d", rc); }
                 else if (rc == 0) { success_count++; }
                 else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
@@ -494,13 +482,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         pt_detach(pid);           
     } else { 
       plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno);
-    }   
-
-    // Final resume
-    usleep(500000);
-    sceKernelPrepareToResumeProcess(pid);
-    sceKernelResumeProcess(pid);
-    
+    }    
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
     
     if (fakelib_wanted)
@@ -541,7 +523,7 @@ int main()
     // if (!patchShellCore())
     //     plugin_log("[SC] patchShellCore failed");
     jb_pid(getpid());
-    usleep(500000);
+    usleep(750000);
     // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
@@ -573,7 +555,7 @@ int main()
         return -1;
     }
 
-    printf_notification("PRX-Loader Ver:2.01                         \n By @84Ciss  FW: %x.%02x", fw_major, fw_minor);
+    printf_notification("PRX-Loader Ver:2.01                        \n By @84Ciss  FW: %x.%02x", fw_major, fw_minor);
     //printf_notification("Shadow-PRX-Loader FW: %x.%02x      \nVer:2.01 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
