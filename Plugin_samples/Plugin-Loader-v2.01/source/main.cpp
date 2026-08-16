@@ -451,48 +451,47 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
         }
     }
-
+    
     // ── 2. Attente initialisation process ────────────────────────────────
-    plugin_log("[PLT] Waiting for process initialization...");
+    plugin_log("Waiting for process initialization...");
     int alive = 0;
     for (int i = 0; i < 10; i++) {
         usleep(100000);
         if (IsProcessRunning(pid)) alive++;
     }
-    plugin_log("[PLT] Process alive: %d/10 checks", alive);
-
+    plugin_log("Process alive: %d/10 checks", alive);
+    
     // -- ptrace + jb_pid + inject
-    int delay_sec = prx_list.empty() ? 5 : prx_list[0].frame_delay / 60;
-    if (delay_sec < 1) delay_sec = 1;
-    plugin_log("[INJ] delay=%ds pid=%d", delay_sec, pid);        
+    // frame_delay utilisé directement en secondes (pas /60)
+    // ex: :60 = 60s, :120 = 120s
+    // Minimum 30s pour laisser le jeu s'initialiser
+    int delay_sec = prx_list.empty() ? 30 : prx_list[0].frame_delay;
+    if (delay_sec < 30) delay_sec = 30;
+    plugin_log("[INJ] delay=%ds pid=%d", delay_sec, pid);
     sleep(delay_sec);
     int success_count = 0;
-    if (kill(pid, 0) == 0 && pt_attach(pid) == 0) { 
-        if (jb_pid(pid) == 0) { 
-            usleep(750000);
-            for (const auto &prx : prx_list) {
+    if (kill(pid, 0) == 0 && pt_attach(pid) == 0) {
+        if (jb_pid(pid) == 0) {
+            for (size_t idx = 0; idx < prx_list.size(); idx++) {
+                const auto &prx = prx_list[idx];
                 long ret = inject_prx(pid, prx.path.c_str());
                 int32_t rc = (int32_t)ret;
-                if (rc > 0) { 
-                success_count++;
-                plugin_log("[INJ] OK modid=%d", rc);
-                sleep(3);
-                if (&prx != &prx_list.back()) {
-                    usleep(2500000);
-               }
-            }
+                if (rc > 0) { success_count++; plugin_log("[INJ] OK modid=%d", rc); }
                 else if (rc == 0) { success_count++; }
                 else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
+
+                // Resume entre chaque PRX pour laisser module_start s'executer
+                // identique au PLT hook : resume → sleep(3) → re-suspend
+                if (idx + 1 < prx_list.size()) {
+                    pt_detach(pid);
+                    sleep(3);
+                    if (pt_attach(pid) != 0 || jb_pid(pid) != 0) break;
+                }
             }
-        }                
-        pt_detach(pid);           
-    } else { 
-      plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno);
-    }
-   // Final resume
-   usleep(500000);        
+        }
+        pt_detach(pid);
+    } else { plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno); }
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
-    
     if (fakelib_wanted)
         printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
                             success_count, prx_list.size(), title_id, fakelib_mount ? "OK" : "none");
@@ -515,7 +514,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v2.01 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.17 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -530,12 +529,8 @@ int main()
     // patchShellCore DESACTIVE pour test (jb_pid suffit)
     // if (!patchShellCore())
     //     plugin_log("[SC] patchShellCore failed");
-    //jb_pid(getpid());
-    //usleep(500000);
-    if (!jb_pid(getpid())) {
-        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
-    }
-    usleep(750000);
+    jb_pid(getpid());
+    usleep(500000);
     // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
@@ -567,8 +562,8 @@ int main()
         return -1;
     }
 
-    printf_notification("PRX-Loader Ver:2.01                       \n By @84Ciss  FW: %x.%02x", fw_major, fw_minor);
-    //printf_notification("Shadow-PRX-Loader FW: %x.%02x      \nVer:2.01 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
