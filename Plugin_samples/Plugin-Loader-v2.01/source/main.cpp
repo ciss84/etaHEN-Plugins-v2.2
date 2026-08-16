@@ -132,7 +132,7 @@ static int pt_attach(pid_t pid){
         if(errno==ESRCH){usleep(500000);continue;}break;
     }return -1;
 }
-static int pt_detach(pid_t p){return sys_ptrace(PT_DETACH,p,0,0);}
+static int __attribute__((unused)) pt_detach(pid_t p){return sys_ptrace(PT_DETACH,p,0,0);}
 static int pt_gr(pid_t p,struct reg*r){return sys_ptrace(PT_GETREGS,p,(caddr_t)r,0);}
 static int pt_sr(pid_t p,const struct reg*r){return sys_ptrace(PT_SETREGS,p,(caddr_t)r,0);}
 static int pt_ci(pid_t p,const void*b,intptr_t a,size_t l){
@@ -513,7 +513,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.17 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v2.01 + FAKELIB ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
