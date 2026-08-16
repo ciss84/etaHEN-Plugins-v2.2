@@ -34,7 +34,6 @@ extern "C" {
     int sceSystemServiceGetAppIdOfRunningBigApp();
     int sceSystemServiceGetAppTitleId(int app_id, char *title_id);
     int sceKernelGetAppInfo(pid_t pid, app_info_t *info);
-    int sceKernelSendNotificationRequest(int, void*, size_t, int);
 }
 
 // NIDs — porté depuis ps5-plugin-loader
