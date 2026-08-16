@@ -451,17 +451,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
         }
     }
-    
-    // ── 2. Attente initialisation process ────────────────────────────────
-    plugin_log("Waiting for process initialization...");
-    int alive = 0;
-    for (int i = 0; i < 10; i++) {
-        usleep(100000);
-        if (IsProcessRunning(pid)) alive++;
-    }
-    plugin_log("Process alive: %d/10 checks", alive);
 
-    // ── 3. PLT Hook ───────────────────────────────────────────────────────
     // -- ptrace + jb_pid + inject
     // frame_delay en frames comme l'ancien INI (:60=1s :600=10s :1200=20s)
     // pt_attach = equivalent sceKernelSuspendProcess
