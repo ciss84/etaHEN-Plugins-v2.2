@@ -4,573 +4,252 @@
 #include <string>
 #include <ps5/kernel.h>
 
+#include <arpa/inet.h>
 #include <dirent.h>
+#include <netinet/in.h>
 #include <stdarg.h>
-#include <sys/event.h>
 #include <sys/mount.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
-#include <sys/syscall.h>
 #include <sys/sysctl.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Structures / externs
+//  Externs
 // ─────────────────────────────────────────────────────────────────────────────
 
 #define IOVEC_ENTRY(x) {x ? (char *)x : 0, x ? strlen(x) + 1 : 0}
 #define IOVEC_SIZE(x)  (sizeof(x) / sizeof(struct iovec))
 
-typedef struct app_info {
-    uint32_t app_id;
-    uint64_t unknown1;
-    char     title_id[14];
-    char     unknown2[0x3c];
-} app_info_t;
-
 extern "C" {
-    int sceKernelGetAppInfo(pid_t pid, app_info_t *info);
-
     int sceSystemServiceGetAppIdOfRunningBigApp();
     int sceSystemServiceGetAppTitleId(int app_id, char *title_id);
-
-    int32_t sceKernelPrepareToSuspendProcess(pid_t pid);
-    int32_t sceKernelSuspendProcess(pid_t pid);
-    int32_t sceKernelPrepareToResumeProcess(pid_t pid);
-    int32_t sceKernelResumeProcess(pid_t pid);
-
-    int _sceApplicationGetAppId(int pid, int *appId);
-    int sceSystemServiceKillApp(int, int, int, int);
 
     int nmount(struct iovec *iov, unsigned int niov, int flags);
     int unmount(const char *path, int flags);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Signal handler / crash reporter
+//  Signal handler
 // ─────────────────────────────────────────────────────────────────────────────
 
 void sig_handler(int signo)
 {
     printf_notification("Plugin Loader crashed: signal %d    ", signo);
-    //printBacktraceForCrash();
     exit(-1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Helpers: find SceSysCore PID
+//  Game detection — porté depuis Injector (sceSystemServiceGetAppIdOfRunningBigApp)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static pid_t find_pid(const char *name)
+static bool Get_Running_App_TID(std::string &title_id, int &bappid)
 {
-    int      mib[4] = {1, 14, 8, 0};
-    pid_t    mypid  = getpid();
-    pid_t    pid    = -1;
-    size_t   buf_size;
-    uint8_t *buf;
-
-    if (sysctl(mib, 4, 0, &buf_size, 0, 0))
-        return -1;
-
-    if (!(buf = (uint8_t *)malloc(buf_size)))
-        return -1;
-
-    if (sysctl(mib, 4, buf, &buf_size, 0, 0)) {
-        free(buf);
-        return -1;
-    }
-
-    for (uint8_t *ptr = buf; ptr < (buf + buf_size);) {
-        int   ki_structsize = *(int *)ptr;
-        pid_t ki_pid        = *(pid_t *)&ptr[72];
-        char *ki_tdname     = (char *)&ptr[447];
-        ptr += ki_structsize;
-        if (!strcmp(name, ki_tdname) && ki_pid != mypid)
-            pid = ki_pid;
-    }
-
-    free(buf);
-    return pid;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  fakelib / unionfs helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-static int mount_unionfs(const char *src, const char *dst)
-{
-    struct iovec iov[] = {
-        IOVEC_ENTRY("fstype"), IOVEC_ENTRY("unionfs"),
-        IOVEC_ENTRY("from"),   IOVEC_ENTRY(src),
-        IOVEC_ENTRY("fspath"), IOVEC_ENTRY(dst),
-    };
-    return nmount(iov, IOVEC_SIZE(iov), 0);
-}
-
-static int find_highest_sandbox_number(const char *title_id)
-{
-    char path[PATH_MAX];
-    int  highest = -1;
-
-    for (int i = 0; i < 1000; i++) {
-        snprintf(path, sizeof(path), "/mnt/sandbox/%s_%03d", title_id, i);
-        struct stat st;
-        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode))
-            highest = i;
-        else
-            break;
-    }
-    return highest;
-}
-
-static char *find_random_folder(const char *title_id, int sandbox_num)
-{
-    char base[PATH_MAX];
-    snprintf(base, sizeof(base), "/mnt/sandbox/%s_%03d", title_id, sandbox_num);
-
-    DIR *dir = opendir(base);
-    if (!dir) return nullptr;
-
-    struct dirent *entry;
-    while ((entry = readdir(dir))) {
-        if (entry->d_name[0] == '.') continue;
-        char full[PATH_MAX];
-        snprintf(full, sizeof(full), "%s/%s/common/lib", base, entry->d_name);
-        struct stat st;
-        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
-            closedir(dir);
-            plugin_log("[Fakelib] Random folder: %s", entry->d_name);
-            return strdup(entry->d_name);
-        }
-    }
-    closedir(dir);
-    return nullptr;
-}
-
-static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
-{
-    char fakelib_src[PATH_MAX];
-    snprintf(fakelib_src, sizeof(fakelib_src),
-             "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
-
-    struct stat st;
-    if (stat(fakelib_src, &st) != 0) {
-        plugin_log("[Fakelib] No fakelib dir in app0 (%s), skipping", sandbox_id);
-        return nullptr;
-    }
-
-    int  sandbox_num   = find_highest_sandbox_number(title_id);
-    if  (sandbox_num < 0) return nullptr;
-
-    char *random_folder = find_random_folder(title_id, sandbox_num);
-    if  (!random_folder) return nullptr;
-
-    char *mount_dst = (char *)malloc(PATH_MAX + 1);
-    if  (!mount_dst) { free(random_folder); return nullptr; }
-
-    snprintf(mount_dst, PATH_MAX + 1,
-             "/mnt/sandbox/%s/%s/common/lib", sandbox_id, random_folder);
-    free(random_folder);
-
-    int res = mount_unionfs(fakelib_src, mount_dst);
-    if (res != 0) {
-        plugin_log("[Fakelib] mount_unionfs failed: %d (errno %d)", res, errno);
-        unmount(mount_dst, MNT_FORCE);
-        free(mount_dst);
-        return nullptr;
-    }
-
-    plugin_log("[Fakelib] Mounted %s -> %s", fakelib_src, mount_dst);
-    printf_notification("Fakelib mounted for %s     ", title_id);
-    return mount_dst;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Wait for a process to exit (kqueue / EVFILT_PROC)
-// ─────────────────────────────────────────────────────────────────────────────
-
-static void wait_for_pid_exit(pid_t pid)
-{
-    int kq = kqueue();
-    if (kq == -1) { sleep(3); return; }
-
-    struct kevent kev;
-    EV_SET(&kev, pid, EVFILT_PROC, EV_ADD | EV_ENABLE | EV_CLEAR, NOTE_EXIT, 0, nullptr);
-
-    if (kevent(kq, &kev, 1, nullptr, 0, nullptr) == -1) {
-        plugin_log("[Wait] kevent registration failed for pid %d: %s", pid, strerror(errno));
-        close(kq);
-        sleep(3);
-        return;
-    }
-
-    plugin_log("[Wait] Watching pid %d for exit...", pid);
-    while (1) {
-        struct kevent ev;
-        int nev = kevent(kq, nullptr, 0, &ev, 1, nullptr);
-        if (nev > 0 && (ev.fflags & NOTE_EXIT)) {
-            plugin_log("[Wait] pid %d exited", pid);
-            break;
-        }
-        if (nev < 0) break;
-    }
-    close(kq);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Sandbox cleanup
-// ─────────────────────────────────────────────────────────────────────────────
-
-static int cleanup_directory(const char *path)
-{
-    DIR *d = opendir(path);
-    if (!d) return -1;
-
-    int           result = 0;
-    struct dirent *entry;
-
-    while ((entry = readdir(d))) {
-        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
-            continue;
-
-        char full[PATH_MAX];
-        snprintf(full, sizeof(full), "%s/%s", path, entry->d_name);
-
-        struct stat st;
-        if (stat(full, &st) != 0) { result = -1; break; }
-
-        if (S_ISDIR(st.st_mode))
-            if (cleanup_directory(full) != 0) { result = -1; break; }
-    }
-    closedir(d);
-    if (result == 0) result = rmdir(path);
-    return result;
-}
-
-static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_mount)
-{
-    if (fakelib_mount) {
-        char sandbox_app0[PATH_MAX];
-        snprintf(sandbox_app0, sizeof(sandbox_app0),
-                 "/mnt/sandbox/%s/app0", sandbox_id);
-
-        int wait_count = 0;
-        struct stat st;
-        while (stat(sandbox_app0, &st) == 0 && wait_count < 30) {
-            sleep(1);
-            wait_count++;
-        }
-
-        plugin_log("[Cleanup] Unmounting %s", fakelib_mount);
-        unmount(fakelib_mount, 0);
-
-        char sandbox_dir[PATH_MAX];
-        snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sandbox_id);
-        plugin_log("[Cleanup] Removing %s", sandbox_dir);
-        if (cleanup_directory(sandbox_dir) == 0) {
-            plugin_log("[Cleanup] Sandbox removed");
-            printf_notification("Sandbox %s cleaned up     ", sandbox_id);
-        } else {
-            plugin_log("[Cleanup] Failed to remove sandbox: %s", strerror(errno));
-        }
-        free(fakelib_mount);
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-static bool IsProcessRunning(pid_t pid)
-{
-    int bappid = 0;
-    return (_sceApplicationGetAppId(pid, &bappid) >= 0);
-}
-
-uintptr_t kernel_base = 0;
-
-static bool resolve_sandbox_id(const char *title_id, char *sandbox_id, size_t sandbox_id_size)
-{
-    int sandbox_num = -1;
-    for (int attempt = 0; attempt < 20 && sandbox_num < 0; attempt++) {
-        sandbox_num = find_highest_sandbox_number(title_id);
-        if (sandbox_num < 0)
-            usleep(50000);
-    }
-
-    if (sandbox_num < 0) {
-        plugin_log("[Sandbox] No sandbox found for %s after 1s", title_id);
+    char tid[255] = {};
+    bappid = sceSystemServiceGetAppIdOfRunningBigApp();
+    if (bappid < 0)
         return false;
-    }
-
-    snprintf(sandbox_id, sandbox_id_size, "%s_%03d", title_id, sandbox_num);
-    plugin_log("[Sandbox] Resolved: %s", sandbox_id);
+    if (sceSystemServiceGetAppTitleId(bappid, tid) != 0)
+        return false;
+    title_id = std::string(tid);
     return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Core injection: PLT hook + fakelib + diagnostic readback
+//  TCP send — porté depuis Injector send_injector_data()
+//  Envoie un payload binaire au daemon etaHEN sur 127.0.0.1:9033
+//  Header = nom du process (proc_name, MAX_PROC_NAME bytes)
+//  Body   = données binaires (PRX ou ELF)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static void inject_into_game(pid_t pid, const char *title_id,
-                              const std::vector<PRXConfig> &prx_list,
-                              const GameInjectorConfig &config)
+#define MAX_PROC_NAME 0x100
+#define INJECTOR_PORT 9033
+
+static int send_injector_data(const char *proc_name,
+                               const uint8_t *data, size_t data_size)
 {
-    plugin_log("========================================");
-    plugin_log("Injecting into %s (pid %d)", title_id, pid);
-    plugin_log("========================================");
-
-    // ── 1. FAKELIB ────────────────────────────────────────────────────────
-    char sandbox_id[32] = {};
-    char *fakelib_mount = nullptr;
-
-    auto fakelib_cfg  = config.fakelib_enabled.find(std::string(title_id));
-    bool fakelib_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
-                          (fakelib_cfg == config.fakelib_enabled.end() || fakelib_cfg->second);
-
-    if (fakelib_wanted && resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id))) {
-        char fakelib_check[PATH_MAX];
-        snprintf(fakelib_check, sizeof(fakelib_check),
-                 "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
-
-        struct stat st;
-        for (int t = 0; t < 30 && stat(fakelib_check, &st) != 0; t++)
-            usleep(50000);
-
-        if (stat(fakelib_check, &st) == 0) {
-            plugin_log("[Fakelib] app0/fakelib found, mounting NOW");
-            fakelib_mount = try_mount_fakelib(title_id, sandbox_id);
-            if (!fakelib_mount)
-                plugin_log("[Fakelib] mount failed");
-        } else {
-            plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
-        }
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        plugin_log("[TCP] socket() failed");
+        return -1;
     }
 
-    // ── 2. Attente initialisation process ────────────────────────────────
-    plugin_log("[PLT] Waiting for process initialization...");
-    int alive = 0;
-    for (int i = 0; i < 10; i++) {
-        usleep(100000);
-        if (IsProcessRunning(pid)) alive++;
-    }
-    plugin_log("[PLT] Process alive: %d/10 checks", alive);
+    struct sockaddr_in addr = {};
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = htons(INJECTOR_PORT);
+    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
-    // ── 3. PLT Hook ───────────────────────────────────────────────────────
-    UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
-    if (!hijacker) {
-        plugin_log("[PLT] First Hijacker attempt failed, retrying in 1s...");
-        sleep(1);
-        hijacker = Hijacker::getHijacker(pid);
+    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        plugin_log("[TCP] connect() failed — etaHEN daemon actif ?");
+        close(sock);
+        return -1;
     }
 
-    int success_count = 0;
+    // Header : proc_name padded à MAX_PROC_NAME bytes
+    uint8_t header[MAX_PROC_NAME] = {};
+    size_t  name_len = strlen(proc_name);
+    if (name_len > MAX_PROC_NAME) name_len = MAX_PROC_NAME;
+    memcpy(header, proc_name, name_len);
 
-    if (hijacker) {
-        uint64_t text_base = hijacker->getEboot()->imagebase();
-        plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
-
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        usleep(750000);
-
-        for (const auto &prx : prx_list) {
-            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
-
-            uintptr_t stuff_addr = 0;
-
-            if (HookGame(hijacker, text_base, prx.path.c_str(), false, prx.frame_delay, &stuff_addr)) {
-                plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
-                success_count++;
-
-                sceKernelPrepareToResumeProcess(pid);
-                sceKernelResumeProcess(pid);
-                
-                // Attends que le PRX se charge (~2-3 secondes)
-                sleep(3);
-                
-                if (&prx != &prx_list.back()) {
-                    sceKernelPrepareToSuspendProcess(pid);
-                    sceKernelSuspendProcess(pid);
-                    usleep(2500000);
-                }
-            } else {
-                plugin_log("[PLT] FAILED to hook: %s", prx.path.c_str());
-            }
-        }
-
-        // Final resume
-        usleep(500000);
-        sceKernelPrepareToResumeProcess(pid);
-        sceKernelResumeProcess(pid);
-
-        plugin_log("[PLT] %d/%zu PRX injected", success_count, prx_list.size());
-
-        if (fakelib_wanted)
-            printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
-                                success_count, prx_list.size(), title_id,
-                                fakelib_mount ? "OK" : "none");
-        else
-            printf_notification("%d/%zu PRX injected into %s     ",
-                                success_count, prx_list.size(), title_id);
-    } else {
-        plugin_log("[PLT] FAILED to create Hijacker for pid %d", pid);
-        if (fakelib_wanted)
-            printf_notification("PLT hook failed for %s     \nFakelib: %s",
-                                title_id, fakelib_mount ? "OK" : "none");
-        else
-            printf_notification("PLT hook failed for %s     ", title_id);
+    if (send(sock, header, MAX_PROC_NAME, 0) != MAX_PROC_NAME) {
+        plugin_log("[TCP] send header failed");
+        close(sock);
+        return -1;
     }
 
-    // ── 4. Attendre exit + cleanup ────────────────────────────────────────
-    plugin_log("[Wait] Waiting for game (pid %d) to exit...", pid);
-    wait_for_pid_exit(pid);
+    ssize_t sent = send(sock, data, data_size, 0);
+    if (sent < 0 || (size_t)sent != data_size) {
+        plugin_log("[TCP] send data failed");
+        close(sock);
+        return -1;
+    }
 
-    if (fakelib_mount)
-        cleanup_after_game(pid, sandbox_id, fakelib_mount);
-
-    plugin_log("Game %s closed - ready for next launch", title_id);
+    plugin_log("[TCP] Sent %zu bytes to 127.0.0.1:%d (proc: %s)",
+               MAX_PROC_NAME + data_size, INJECTOR_PORT, proc_name);
+    close(sock);
+    return 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  main: kqueue monitoring sur SceSysCore
+//  Injection d'un PRX via TCP — lit le fichier et envoie à etaHEN
 // ─────────────────────────────────────────────────────────────────────────────
+
+static bool inject_prx_tcp(const char *title_id, const char *prx_path)
+{
+    struct stat st;
+    if (stat(prx_path, &st) < 0) {
+        plugin_log("[TCP] File not found: %s", prx_path);
+        return false;
+    }
+
+    FILE *f = fopen(prx_path, "rb");
+    if (!f) {
+        plugin_log("[TCP] fopen failed: %s", prx_path);
+        return false;
+    }
+
+    uint8_t *buf = (uint8_t *)malloc(st.st_size);
+    if (!buf) { fclose(f); return false; }
+
+    fread(buf, 1, st.st_size, f);
+    fclose(f);
+
+    plugin_log("[TCP] Injecting %s -> %s", prx_path, title_id);
+    int ret = send_injector_data("eboot.bin", buf, st.st_size);
+    free(buf);
+
+    return ret == 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Envoie tous les payloads pour un title_id
+// ─────────────────────────────────────────────────────────────────────────────
+
+static void send_all_payloads(const char *title_id, const GameInjectorConfig &config)
+{
+    plugin_log("========================================");
+    plugin_log("Injecting into %s", title_id);
+    plugin_log("========================================");
+
+    int ok = 0, total = 0;
+
+    // Section [default] si elle existe
+    auto def = config.games.find("default");
+    if (def != config.games.end()) {
+        for (const auto &prx : def->second) {
+            total++;
+            if (inject_prx_tcp(title_id, prx.path.c_str())) ok++;
+        }
+    }
+
+    // Section [TITLE_ID]
+    auto it = config.games.find(std::string(title_id));
+    if (it != config.games.end()) {
+        for (const auto &prx : it->second) {
+            total++;
+            if (inject_prx_tcp(title_id, prx.path.c_str())) ok++;
+        }
+    }
+
+    if (total == 0) {
+        plugin_log("[TCP] No config for %s", title_id);
+        return;
+    }
+
+    plugin_log("[TCP] %d/%d injected into %s", ok, total, title_id);
+    printf_notification("%d/%d injected into %s     \nBy @84Ciss", ok, total, title_id);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  main
+// ─────────────────────────────────────────────────────────────────────────────
+
+uintptr_t kernel_base = 0;
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.17 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.17 [Injector Mode] ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
 
-    // ── FW detection ─────────────────────────────────────────────────────
-    uint32_t fw = kernel_get_fw_version();
+    // ── FW detection ─────────────────────────────────────────────────────────
+    uint32_t fw       = kernel_get_fw_version();
     uint32_t fw_major = (fw >> 24) & 0xFF;
     uint32_t fw_minor = (fw >> 16) & 0xFF;
-    plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
-    // ─────────────────────────────────────────────────────────────────────
+    plugin_log("FW: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
 
-    if (!patch_shellcore_for_data()) {
-       plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
-    }
-    usleep(750000);
-    // ─────────────────────────────────────────────────────────────────────
-        
-    // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
-    // TEST: variante mount (nullfs /user/data -> /data), voir patch_shellcore.hpp
-    // Rollback -> remettre: if (!patch_shellcore_for_data()) { ... }
-    if (!patch_shellcore_for_data_via_mount()) {
-        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
-    }
-    usleep(750000);
-    // ─────────────────────────────────────────────────────────────────────
-
+    // ── Signal handler ────────────────────────────────────────────────────────
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
     for (int i = 0; i < 12; i++)
         sigaction(i, &sa, nullptr);
 
-    // ── Find SceSysCore.elf ───────────────────────────────────────────────
-    pid_t syscore_pid = find_pid("SceSysCore.elf");
-    if (syscore_pid == -1) {
-        plugin_log("ERROR: SceSysCore.elf not found");
-        printf_notification("Plugin Loader: SceSysCore not found!     ");
-        return -1;
-    }
-    plugin_log("SceSysCore.elf pid: %d", syscore_pid);
+    // ── patchShellCore ────────────────────────────────────────────────────────
+    // DISABLED FOR TEST — remettre pour prod
+    //if (!patchShellCore())
+    //    plugin_log("[SC_PATCH] echec patch SceShellCore");
+    //usleep(750000);
 
-    // ── kqueue setup ─────────────────────────────────────────────────────
-    int kq = kqueue();
-    if (kq == -1) { perror("kqueue"); return -1; }
+    printf_notification("Prx-Loader [TCP] FW: %x.%02x     \nVer:1.17 By @84Ciss", fw_major, fw_minor);
 
-    struct kevent kev;
-    EV_SET(&kev, syscore_pid, EVFILT_PROC, EV_ADD | EV_ENABLE | EV_CLEAR,
-           NOTE_FORK | NOTE_EXEC | NOTE_TRACK, 0, nullptr);
+    // ── Main loop — poll comme l'Injector ────────────────────────────────────
+    std::string tid;
+    int bappid, last_bappid = -1;
+    bool just_started = true;
 
-    if (kevent(kq, &kev, 1, nullptr, 0, nullptr) == -1) {
-        perror("kevent setup");
-        close(kq);
-        return -1;
-    }
-
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
-    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
-
-    plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
-
-    pid_t child_pid = -1;
-
-    // ── Main event loop ───────────────────────────────────────────────────
-    while (1)
+    while (true)
     {
-        struct kevent ev;
-        int nev = kevent(kq, nullptr, 0, &ev, 1, nullptr);
-
-        if (nev < 0) { plugin_log("kevent error: %s", strerror(errno)); continue; }
-        if (nev == 0) continue;
-
-        if (ev.fflags & NOTE_CHILD)
-            child_pid = (pid_t)ev.ident;
-
-        if ((ev.fflags & NOTE_EXEC) && child_pid != -1 && (pid_t)ev.ident == child_pid)
+        if (Get_Running_App_TID(tid, bappid))
         {
-            app_info_t appinfo{};
-            if (sceKernelGetAppInfo(child_pid, &appinfo) != 0) {
-                plugin_log("sceKernelGetAppInfo failed for pid %d", child_pid);
-                child_pid = -1;
-                continue;
-            }
-
-            char title_id[10] = {};
-            memcpy(title_id, appinfo.title_id, 9);
-
-            if (strncmp(title_id, "PPSA", 4) != 0 &&
-                strncmp(title_id, "CUSA", 4) != 0 &&
-                strncmp(title_id, "SCUS", 4) != 0)
+            if (bappid != last_bappid &&
+                (tid.rfind("PPSA", 0) == 0 ||
+                 tid.rfind("CUSA", 0) == 0 ||
+                 tid.rfind("SCUS", 0) == 0))
             {
-                child_pid = -1;
-                continue;
-            }
+                plugin_log("Game detected: %s (bappid=%d)", tid.c_str(), bappid);
+                printf_notification("Game detected: %s\\nInjecting in %ds...", tid.c_str(), just_started ? 1 : 10);
 
-            plugin_log("Game detected: %s (pid %d)", title_id, child_pid);
+                sleep(just_started ? 1 : 10);
 
-            GameInjectorConfig config = parse_injector_config();
-            auto it = config.games.find(std::string(title_id));
-
-            if (it == config.games.end()) {
-                plugin_log("No PLT config for %s - fakelib only", title_id);
-
-                char sid[32] = {};
-                char *fml = nullptr;
-                auto fml_cfg = config.fakelib_enabled.find(std::string(title_id));
-                bool fml_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
-                                  (fml_cfg == config.fakelib_enabled.end() || fml_cfg->second);
-                if (fml_wanted && resolve_sandbox_id(title_id, sid, sizeof(sid))) {
-                    char fakelib_check[PATH_MAX];
-                    snprintf(fakelib_check, sizeof(fakelib_check),
-                             "/mnt/sandbox/%s/app0/fakelib", sid);
-                    struct stat st2;
-                    for (int t = 0; t < 30 && stat(fakelib_check, &st2) != 0; t++)
-                        usleep(50000);
-                    if (stat(fakelib_check, &st2) == 0)
-                        fml = try_mount_fakelib(title_id, sid);
+                // Vérifier que le jeu tourne encore
+                std::string tid2;
+                int bappid2;
+                if (!Get_Running_App_TID(tid2, bappid2) || bappid != bappid2) {
+                    plugin_log("Game closed before injection");
+                    just_started = false;
+                    continue;
                 }
 
-                pid_t game_pid = child_pid;
-                child_pid = -1;
-                if (fml) {
-                    wait_for_pid_exit(game_pid);
-                    cleanup_after_game(game_pid, sid, fml);
-                }
-                continue;
+                GameInjectorConfig config = parse_injector_config();
+                send_all_payloads(tid.c_str(), config);
+                last_bappid = bappid;
             }
-
-            pid_t game_pid = child_pid;
-            child_pid = -1;
-
-            inject_into_game(game_pid, title_id, it->second, config);
         }
+
+        just_started = false;
+        sleep(5);
     }
 
-    close(kq);
     return 0;
 }
