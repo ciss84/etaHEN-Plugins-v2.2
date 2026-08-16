@@ -493,7 +493,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.17 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v2.01 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -505,8 +505,9 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
-    if (!patchShellCore())
-        plugin_log("[SC] patchShellCore failed");
+    // patchShellCore DESACTIVE pour test (jb_pid suffit)
+    // if (!patchShellCore())
+    //     plugin_log("[SC] patchShellCore failed");
     jb_pid(getpid());
     usleep(500000);
     // ─────────────────────────────────────────────────────────────────────
@@ -540,8 +541,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
-    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:2.01 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:2.01 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
