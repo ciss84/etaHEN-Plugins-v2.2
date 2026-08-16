@@ -452,19 +452,23 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
     }
 
+    // ── 2. Attente initialisation process ────────────────────────────────
+    plugin_log("[PLT] Waiting for process initialization...");
+    int alive = 0;
+    for (int i = 0; i < 10; i++) {
+        usleep(100000);
+        if (IsProcessRunning(pid)) alive++;
+    }
+    plugin_log("[PLT] Process alive: %d/10 checks", alive);
+
     // -- ptrace + jb_pid + inject
     int delay_sec = prx_list.empty() ? 5 : prx_list[0].frame_delay / 60;
     if (delay_sec < 1) delay_sec = 1;
-    plugin_log("[INJ] delay=%ds pid=%d", delay_sec, pid);
+    plugin_log("[INJ] delay=%ds pid=%d", delay_sec, pid);        
     sleep(delay_sec);
     int success_count = 0;
-    if (kill(pid, 0) == 0 && pt_attach(pid) == 0) {
-        if (jb_pid(pid) == 0) {
-        
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        usleep(750000);
-                
+    if (kill(pid, 0) == 0 && pt_attach(pid) == 0) { 
+        if (jb_pid(pid) == 0) {        
             for (const auto &prx : prx_list) {
                 long ret = inject_prx(pid, prx.path.c_str());
                 int32_t rc = (int32_t)ret;
@@ -476,13 +480,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
         pt_detach(pid);           
     } else { 
       plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno);
-    }
-
-    // Final resume
-    usleep(500000);
-    sceKernelPrepareToResumeProcess(pid);
-    sceKernelResumeProcess(pid);
-
+    }   
+    
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
     
     if (fakelib_wanted)
