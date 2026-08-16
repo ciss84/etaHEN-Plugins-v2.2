@@ -483,54 +483,63 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Process alive: %d/10 checks", alive);
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
-    // -- ptrace + jb_pid + inject
-    // frame_delay en frames comme l'ancien INI (:60=1s :600=10s :1200=20s)
-    // pt_attach = equivalent sceKernelSuspendProcess
-    // pt_detach = equivalent sceKernelResumeProcess
-    int delay_sec = prx_list.empty() ? 1 : prx_list[0].frame_delay / 60;
-    if (delay_sec < 1) delay_sec = 1;
-    plugin_log("[INJ] delay=%ds pid=%d", delay_sec, pid);
-    sleep(delay_sec);
-    int success_count = 0;
-    if (kill(pid, 0) == 0) {
-        if (pt_attach(pid) == 0) {
-            usleep(750000);
-            if (jb_pid(pid) == 0) {
-                for (size_t idx = 0; idx < prx_list.size(); idx++) {
-                    const auto &prx = prx_list[idx];
-                    long ret = inject_prx(pid, prx.path.c_str());
-                    int32_t rc = (int32_t)ret;
-                    if (rc > 0) { success_count++; plugin_log("[INJ] OK modid=%d", rc); }
-                    else if (rc == 0) { success_count++; }
-                    else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
+    // ── jb_pid kernel direct (pas de ptrace) + PLT hook comme l'original ────
+    // jb_pid = kernel patch ucred → game accède /data sans patchShellCore
+    // HookGame = PLT hook scePadReadState → sceKernelLoadStartModule depuis
+    //            l'intérieur du jeu en cours d'exécution normale (:60 = 1s OK)
 
-                    if (idx + 1 < prx_list.size()) {
-                        sys_ptrace(PT_DETACH, pid, (caddr_t)1, 0);
-                        usleep(100000);
-                        kill(pid, SIGCONT);
-                        sleep(3);
-                        if (pt_attach(pid) != 0) break;
-                        usleep(2500000);
-                        if (jb_pid(pid) != 0) break;
-                    }
-                }
-            }
-            // Detach sans signal + kill SIGCONT explicite
-            sys_ptrace(PT_DETACH, pid, (caddr_t)1, 0);
-            usleep(100000);
-            kill(pid, SIGCONT);
-        } else {
-            plugin_log("[INJ] pt_attach failed pid=%d errno=%d", pid, errno);
-        }
-    } else {
-        plugin_log("[INJ] process dead pid=%d", pid);
+    // jb_pid kernel direct — aucune interruption du process
+    if (jb_pid(pid) != 0)
+        plugin_log("[JB] jb_pid failed pid=%d", pid);
+
+    int success_count = 0;
+
+    UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
+    if (!hijacker) {
+        plugin_log("[PLT] First Hijacker attempt failed, retrying 1s...");
+        sleep(1);
+        hijacker = Hijacker::getHijacker(pid);
     }
-    plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
+
+    if (hijacker) {
+        uint64_t text_base = hijacker->getEboot()->imagebase();
+        plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
+
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        usleep(750000);
+
+        for (const auto &prx : prx_list) {
+            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
+            uintptr_t stuff_addr = 0;
+            if (HookGame(hijacker, text_base, prx.path.c_str(), false, prx.frame_delay, &stuff_addr)) {
+                plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
+                success_count++;
+                sceKernelPrepareToResumeProcess(pid);
+                sceKernelResumeProcess(pid);
+                sleep(3);
+                if (&prx != &prx_list.back()) {
+                    sceKernelPrepareToSuspendProcess(pid);
+                    sceKernelSuspendProcess(pid);
+                    usleep(2500000);
+                }
+            } else {
+                plugin_log("[PLT] FAILED to hook: %s", prx.path.c_str());
+            }
+        }
+
+        usleep(500000);
+        sceKernelPrepareToResumeProcess(pid);
+        sceKernelResumeProcess(pid);
+        plugin_log("[PLT] %d/%zu PRX injected", success_count, prx_list.size());
+    } else {
+        plugin_log("[PLT] FAILED to create Hijacker for pid %d", pid);
+    }
     if (fakelib_wanted)
-        printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
+        printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s\nBy @84Ciss",
                             success_count, prx_list.size(), title_id, fakelib_mount ? "OK" : "none");
     else
-        printf_notification("%d/%zu PRX injected into %s     ",
+        printf_notification("%d/%zu PRX injected into %s     \nBy @84Ciss",
                             success_count, prx_list.size(), title_id);
     // ── 4. Attendre exit + cleanup ────────────────────────────────────────
     plugin_log("[Wait] Waiting for game (pid %d) to exit...", pid);
