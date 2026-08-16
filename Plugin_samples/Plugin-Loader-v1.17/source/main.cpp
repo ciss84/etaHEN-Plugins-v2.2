@@ -519,9 +519,10 @@ int main()
     for (int i = 0; i < 12; i++)
         sigaction(i, &sa, nullptr);
 
-    // patchShellCore pour accès /data du loader lui-même
-    if (!patchShellCore())
-        plugin_log("[SC] patchShellCore failed");
+    // Jailbreak du loader lui-même → accès /data/PluginLoader/
+    // Identique à ps5-plugin-loader (pas de patchShellCore)
+    if (jb_pid(getpid()) != 0)
+        plugin_log("[JB] jb_pid self failed, /data access may fail");
     usleep(500000);
 
     printf_notification("Prx-Loader [ptrace] FW:%x.%02x     \nVer:1.17 By @84Ciss",

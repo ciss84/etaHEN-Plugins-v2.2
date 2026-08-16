@@ -5,7 +5,6 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include "hijacker/patch_shellcore.hpp"
 #include "notify.hpp"
 
 #include <map>
