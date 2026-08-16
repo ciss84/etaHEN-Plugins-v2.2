@@ -7,10 +7,11 @@
 #include <dirent.h>
 #include <stdarg.h>
 #include <sys/event.h>
-#include <machine/reg.h>
-#include <ps5/payload.h>
+#include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#include <machine/reg.h>
+#include <ps5/payload.h>
 #include <time.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
@@ -100,6 +101,128 @@ static pid_t find_pid(const char *name)
 // ─────────────────────────────────────────────────────────────────────────────
 //  fakelib / unionfs helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+#define NID_LOADMOD  "wzvqT4UqKX8"
+#define NID_SYSCALL  "HoLVWNanBBc"
+#define AUTHID_SYSTEM   0x4801000000000013ULL
+#define AUTHID_DEBUGGER 0x4800000000010003ULL
+#define SHELLCODE_FN_OFFSET 14
+
+static const uint8_t k_shellcode[] = {
+    0x55, 0x48, 0x89, 0xE5, 0x48, 0x83, 0xE4, 0xF0,
+    0x48, 0x83, 0xEC, 0x28, 0x49, 0xBF,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x31, 0xF6, 0x31, 0xD2, 0x31, 0xC9,
+    0x45, 0x31, 0xC0, 0x45, 0x31, 0xC9,
+    0x41, 0xFF, 0xD7, 0x48, 0x89, 0xEC, 0x5D, 0xCC
+};
+
+static int sys_ptrace(int req, pid_t pid, caddr_t addr, int data) {
+    pid_t mypid=getpid(); uint64_t auth=kernel_get_ucred_authid(mypid);
+    if (!auth) return -1;
+    kernel_set_ucred_authid(mypid, AUTHID_DEBUGGER);
+    int ret=(int)syscall(SYS_ptrace,req,pid,addr,data); int err=errno;
+    kernel_set_ucred_authid(mypid, auth); errno=err; return ret;
+}
+static int waitpid_timeout(pid_t pid, int *st, int ms) {
+    struct timespec s,n; clock_gettime(CLOCK_MONOTONIC,&s);
+    while(true){ pid_t r=waitpid(pid,st,WNOHANG);
+        if(r==pid) return 1; if(r<0) return -1;
+        clock_gettime(CLOCK_MONOTONIC,&n);
+        long e=(n.tv_sec-s.tv_sec)*1000+(n.tv_nsec-s.tv_nsec)/1000000;
+        if(e>=ms) return 0; usleep(10000); }
+}
+static int pt_attach(pid_t pid) {
+    for(int r=5;r>0;r--){
+        if(sys_ptrace(PT_ATTACH,pid,0,0)==0){
+            int s=0; if(waitpid_timeout(pid,&s,2000)>0) return 0;
+            sys_ptrace(PT_DETACH,pid,0,0);
+        }
+        if(errno==ESRCH){usleep(500000);continue;} break;
+    } return -1;
+}
+static int pt_detach(pid_t pid){return sys_ptrace(PT_DETACH,pid,0,0);}
+static int pt_getregs(pid_t pid,struct reg *r){return sys_ptrace(PT_GETREGS,pid,(caddr_t)r,0);}
+static int pt_setregs(pid_t pid,const struct reg *r){return sys_ptrace(PT_SETREGS,pid,(caddr_t)r,0);}
+static int pt_copyin(pid_t pid,const void *buf,intptr_t addr,size_t len){
+    struct ptrace_io_desc iod={PIOD_WRITE_D,(void*)addr,(void*)buf,len};
+    return sys_ptrace(PT_IO,pid,(caddr_t)&iod,0);
+}
+static intptr_t pt_resolve(pid_t pid,const char *nid){
+    intptr_t a=kernel_dynlib_resolve(pid,0x1,nid);
+    return a?a:kernel_dynlib_resolve(pid,0x2001,nid);
+}
+static long pt_syscall(pid_t pid,int sysno,...){
+    intptr_t addr=pt_resolve(pid,NID_SYSCALL); if(!addr) return -1; addr+=0xA;
+    struct reg jmp,bak; if(pt_getregs(pid,&bak)) return -1; memcpy(&jmp,&bak,sizeof(jmp));
+    jmp.r_rip=addr; jmp.r_rax=(uint64_t)sysno;
+    va_list ap; va_start(ap,sysno);
+    jmp.r_rdi=va_arg(ap,uint64_t); jmp.r_rsi=va_arg(ap,uint64_t);
+    jmp.r_rdx=va_arg(ap,uint64_t); jmp.r_r10=va_arg(ap,uint64_t);
+    jmp.r_r8=va_arg(ap,uint64_t);  jmp.r_r9=va_arg(ap,uint64_t); va_end(ap);
+    if(pt_setregs(pid,&jmp)) return -1;
+    int mx=10000;
+    while(jmp.r_rsp<=bak.r_rsp&&mx-->0){
+        if(sys_ptrace(PT_STEP,pid,(caddr_t)1,0)) return -1;
+        if(waitpid_timeout(pid,NULL,1000)<=0) return -1;
+        if(pt_getregs(pid,&jmp)) return -1;
+    }
+    pt_setregs(pid,&bak); return (long)jmp.r_rax;
+}
+static intptr_t pt_mmap(pid_t pid,intptr_t a,size_t l,int p,int f,int fd,off_t o){
+    return pt_syscall(pid,SYS_mmap,(uint64_t)a,(uint64_t)l,(uint64_t)p,(uint64_t)f,(uint64_t)fd,(uint64_t)o);
+}
+static int pt_munmap(pid_t pid,intptr_t a,size_t l){
+    return (int)pt_syscall(pid,SYS_munmap,(uint64_t)a,(uint64_t)l);
+}
+static long pt_call_continue(pid_t pid,intptr_t addr,...){
+    struct reg jmp,bak; if(pt_getregs(pid,&bak)) return -1; memcpy(&jmp,&bak,sizeof(jmp));
+    jmp.r_rip=addr;
+    va_list ap; va_start(ap,addr);
+    jmp.r_rdi=va_arg(ap,uint64_t); jmp.r_rsi=va_arg(ap,uint64_t);
+    jmp.r_rdx=va_arg(ap,uint64_t); jmp.r_rcx=va_arg(ap,uint64_t);
+    jmp.r_r8=va_arg(ap,uint64_t);  jmp.r_r9=va_arg(ap,uint64_t); va_end(ap);
+    if(pt_setregs(pid,&jmp)) return -1;
+    int status=0; sys_ptrace(PT_CONTINUE,pid,(caddr_t)1,0);
+    if(waitpid_timeout(pid,&status,5000)<=0){pt_setregs(pid,&bak);return -1;}
+    if(pt_getregs(pid,&jmp)) return -1;
+    pt_setregs(pid,&bak); return (long)jmp.r_rax;
+}
+static int jb_pid(pid_t pid){
+    intptr_t rv=kernel_get_root_vnode();
+    intptr_t ucred=kernel_get_proc_ucred(pid);
+    intptr_t fd=kernel_get_proc_filedesc(pid);
+    if(!rv||!ucred||!fd){plugin_log("[JB] missing ptrs");return -1;}
+    const uint32_t z=0; const int64_t caps=-1LL;
+    const uint64_t auth=AUTHID_SYSTEM; const uint8_t attr=0x80;
+    #define KW(s,o,l) if(kernel_copyin(s,ucred+(o),l)<0){return -1;}
+    KW(&z,0x04,4) KW(&z,0x08,4) KW(&z,0x0C,4) KW(&z,0x10,4)
+    KW(&z,0x14,4) KW(&z,0x18,4) KW(&auth,0x58,8)
+    KW(&caps,0x60,8) KW(&caps,0x68,8) KW(&attr,0x83,1)
+    #undef KW
+    kernel_set_proc_rootdir(pid,rv);
+    kernel_set_proc_jaildir(pid,rv);
+    plugin_log("[JB] OK pid=%d",pid); return 0;
+}
+static long inject_prx_attached(pid_t pid,const char *path){
+    if(access(path,R_OK)!=0) return -1;
+    intptr_t fn=pt_resolve(pid,NID_LOADMOD); if(!fn) return -1;
+    intptr_t rw=pt_mmap(pid,0,0x4000,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
+    if(rw==(intptr_t)-1||rw==0) return -1;
+    long mod=-1;
+    do{
+        if(pt_copyin(pid,path,rw,strlen(path)+1)<0) break;
+        uint8_t sc[sizeof(k_shellcode)]; memcpy(sc,k_shellcode,sizeof(sc));
+        memcpy(sc+SHELLCODE_FN_OFFSET,&fn,sizeof(fn));
+        if(pt_copyin(pid,sc,rw+0x1000,sizeof(sc))<0) break;
+        if(kernel_mprotect(pid,rw+0x1000,0x1000,PROT_READ|PROT_WRITE|PROT_EXEC)!=0) break;
+        mod=pt_call_continue(pid,rw+0x1000,(uint64_t)rw,0ULL,0ULL,0ULL,0ULL,0ULL);
+        kernel_mprotect(pid,rw+0x1000,0x1000,PROT_READ|PROT_WRITE);
+    }while(0);
+    pt_munmap(pid,rw,0x4000);
+    return mod;
+}
+
 
 static int mount_unionfs(const char *src, const char *dst)
 {
@@ -351,13 +474,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
     }
 
-    // ── 2. ptrace + jb_pid + inject ──────────────────────────────────────────
+    // -- 2. ptrace + jb_pid + inject ------------------------------------------
     int delay_sec = prx_list.empty() ? 5 : prx_list[0].frame_delay / 60;
     if (delay_sec < 1) delay_sec = 1;
     plugin_log("[INJ] waiting %ds...", delay_sec);
     sleep(delay_sec);
-
-    // ── 3. Inject via ptrace ──────────────────────────────────────────────────
     int success_count = 0;
     if (pt_attach(pid) == 0) {
         if (jb_pid(pid) == 0) {
@@ -366,14 +487,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 int32_t rc = (int32_t)ret;
                 if (rc > 0)       { success_count++; plugin_log("[INJ] OK modid=%d %s", rc, prx.path.c_str()); }
                 else if (rc == 0) { success_count++; }
-                else              { plugin_log("[INJ] FAILED 0x%08x %s", (uint32_t)rc, prx.path.c_str()); }
+                else { plugin_log("[INJ] FAILED 0x%08x %s", (uint32_t)rc, prx.path.c_str()); }
             }
         }
         pt_detach(pid);
-    } else {
-        plugin_log("[INJ] pt_attach failed");
-    }
-
+    } else { plugin_log("[INJ] pt_attach failed"); }
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
     if (fakelib_wanted)
         printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
@@ -382,7 +500,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     else
         printf_notification("%d/%zu PRX injected into %s     ",
                             success_count, prx_list.size(), title_id);
-
     // ── 4. Attendre exit + cleanup ────────────────────────────────────────
     plugin_log("[Wait] Waiting for game (pid %d) to exit...", pid);
     wait_for_pid_exit(pid);
@@ -396,135 +513,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
 // ─────────────────────────────────────────────────────────────────────────────
 //  main: kqueue monitoring sur SceSysCore
 // ─────────────────────────────────────────────────────────────────────────────
-
-
-#define NID_LOADMOD  "wzvqT4UqKX8"
-#define NID_SYSCALL  "HoLVWNanBBc"
-#define AUTHID_SYSTEM   0x4801000000000013ULL
-#define AUTHID_DEBUGGER 0x4800000000010003ULL
-#define SHELLCODE_FN_OFFSET 14
-
-static const uint8_t k_shellcode[] = {
-    0x55, 0x48, 0x89, 0xE5, 0x48, 0x83, 0xE4, 0xF0,
-    0x48, 0x83, 0xEC, 0x28, 0x49, 0xBF,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x31, 0xF6, 0x31, 0xD2, 0x31, 0xC9,
-    0x45, 0x31, 0xC0, 0x45, 0x31, 0xC9,
-    0x41, 0xFF, 0xD7, 0x48, 0x89, 0xEC, 0x5D, 0xCC
-};
-
-static int sys_ptrace(int req, pid_t pid, caddr_t addr, int data) {
-    pid_t mypid = getpid();
-    uint64_t auth = kernel_get_ucred_authid(mypid);
-    if (!auth) return -1;
-    kernel_set_ucred_authid(mypid, AUTHID_DEBUGGER);
-    int ret = (int)syscall(SYS_ptrace, req, pid, addr, data);
-    int err = errno;
-    kernel_set_ucred_authid(mypid, auth);
-    errno = err; return ret;
-}
-static int waitpid_timeout(pid_t pid, int *st, int ms) {
-    struct timespec s, n; clock_gettime(CLOCK_MONOTONIC, &s);
-    while(true) {
-        pid_t r = waitpid(pid, st, WNOHANG);
-        if (r==pid) return 1; if (r<0) return -1;
-        clock_gettime(CLOCK_MONOTONIC, &n);
-        long e=(n.tv_sec-s.tv_sec)*1000+(n.tv_nsec-s.tv_nsec)/1000000;
-        if (e>=ms) return 0; usleep(10000);
-    }
-}
-static int pt_attach(pid_t pid) {
-    for (int r=5; r>0; r--) {
-        if (sys_ptrace(PT_ATTACH,pid,0,0)==0) {
-            int s=0; if (waitpid_timeout(pid,&s,2000)>0) return 0;
-            sys_ptrace(PT_DETACH,pid,0,0);
-        }
-        if (errno==ESRCH) { usleep(500000); continue; } break;
-    }
-    return -1;
-}
-static int pt_detach(pid_t pid) { return sys_ptrace(PT_DETACH,pid,0,0); }
-static int pt_getregs(pid_t pid, struct reg *r) { return sys_ptrace(PT_GETREGS,pid,(caddr_t)r,0); }
-static int pt_setregs(pid_t pid, const struct reg *r) { return sys_ptrace(PT_SETREGS,pid,(caddr_t)r,0); }
-static int pt_copyin(pid_t pid, const void *buf, intptr_t addr, size_t len) {
-    struct ptrace_io_desc iod={PIOD_WRITE_D,(void*)addr,(void*)buf,len};
-    return sys_ptrace(PT_IO,pid,(caddr_t)&iod,0);
-}
-static intptr_t pt_resolve(pid_t pid, const char *nid) {
-    intptr_t a=kernel_dynlib_resolve(pid,0x1,nid);
-    return a ? a : kernel_dynlib_resolve(pid,0x2001,nid);
-}
-static long pt_syscall(pid_t pid, int sysno, ...) {
-    intptr_t addr=pt_resolve(pid,NID_SYSCALL); if (!addr) return -1; addr+=0xA;
-    struct reg jmp,bak; if (pt_getregs(pid,&bak)) return -1; memcpy(&jmp,&bak,sizeof(jmp));
-    jmp.r_rip=addr; jmp.r_rax=(uint64_t)sysno;
-    va_list ap; va_start(ap,sysno);
-    jmp.r_rdi=va_arg(ap,uint64_t); jmp.r_rsi=va_arg(ap,uint64_t);
-    jmp.r_rdx=va_arg(ap,uint64_t); jmp.r_r10=va_arg(ap,uint64_t);
-    jmp.r_r8=va_arg(ap,uint64_t);  jmp.r_r9=va_arg(ap,uint64_t); va_end(ap);
-    if (pt_setregs(pid,&jmp)) return -1;
-    int mx=10000;
-    while(jmp.r_rsp<=bak.r_rsp && mx-->0) {
-        if (sys_ptrace(PT_STEP,pid,(caddr_t)1,0)) return -1;
-        if (waitpid_timeout(pid,NULL,1000)<=0) return -1;
-        if (pt_getregs(pid,&jmp)) return -1;
-    }
-    pt_setregs(pid,&bak); return (long)jmp.r_rax;
-}
-static intptr_t pt_mmap(pid_t pid,intptr_t addr,size_t len,int prot,int flags,int fd,off_t off) {
-    return pt_syscall(pid,SYS_mmap,(uint64_t)addr,(uint64_t)len,(uint64_t)prot,(uint64_t)flags,(uint64_t)fd,(uint64_t)off);
-}
-static int pt_munmap(pid_t pid,intptr_t addr,size_t len) {
-    return (int)pt_syscall(pid,SYS_munmap,(uint64_t)addr,(uint64_t)len);
-}
-static long pt_call_continue(pid_t pid, intptr_t addr, ...) {
-    struct reg jmp,bak; if (pt_getregs(pid,&bak)) return -1; memcpy(&jmp,&bak,sizeof(jmp));
-    jmp.r_rip=addr;
-    va_list ap; va_start(ap,addr);
-    jmp.r_rdi=va_arg(ap,uint64_t); jmp.r_rsi=va_arg(ap,uint64_t);
-    jmp.r_rdx=va_arg(ap,uint64_t); jmp.r_rcx=va_arg(ap,uint64_t);
-    jmp.r_r8=va_arg(ap,uint64_t);  jmp.r_r9=va_arg(ap,uint64_t); va_end(ap);
-    if (pt_setregs(pid,&jmp)) return -1;
-    int status=0; sys_ptrace(PT_CONTINUE,pid,(caddr_t)1,0);
-    if (waitpid_timeout(pid,&status,5000)<=0) { pt_setregs(pid,&bak); return -1; }
-    if (pt_getregs(pid,&jmp)) return -1;
-    plugin_log("[PT] RIP=0x%llx RAX=0x%llx",(unsigned long long)jmp.r_rip,(unsigned long long)jmp.r_rax);
-    pt_setregs(pid,&bak); return (long)jmp.r_rax;
-}
-static int jb_pid(pid_t pid) {
-    intptr_t rv=kernel_get_root_vnode();
-    intptr_t ucred=kernel_get_proc_ucred(pid);
-    intptr_t fd=kernel_get_proc_filedesc(pid);
-    if (!rv||!ucred||!fd) { plugin_log("[JB] missing ptrs"); return -1; }
-    const uint32_t z=0; const int64_t caps=-1LL;
-    const uint64_t auth=AUTHID_SYSTEM; const uint8_t attr=0x80;
-    #define KW(s,o,l) if(kernel_copyin(s,ucred+(o),l)<0){return -1;}
-    KW(&z,0x04,4) KW(&z,0x08,4) KW(&z,0x0C,4) KW(&z,0x10,4)
-    KW(&z,0x14,4) KW(&z,0x18,4) KW(&auth,0x58,8)
-    KW(&caps,0x60,8) KW(&caps,0x68,8) KW(&attr,0x83,1)
-    #undef KW
-    kernel_set_proc_rootdir(pid,rv);
-    kernel_set_proc_jaildir(pid,rv);
-    plugin_log("[JB] OK pid=%d",pid); return 0;
-}
-static long inject_prx_attached(pid_t pid, const char *path) {
-    if (access(path,R_OK)!=0) return -1;
-    intptr_t fn=pt_resolve(pid,NID_LOADMOD); if (!fn) return -1;
-    intptr_t rw=pt_mmap(pid,0,0x4000,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-    if (rw==(intptr_t)-1||rw==0) return -1;
-    long mod=-1;
-    do {
-        if (pt_copyin(pid,path,rw,strlen(path)+1)<0) break;
-        uint8_t sc[sizeof(k_shellcode)]; memcpy(sc,k_shellcode,sizeof(sc));
-        memcpy(sc+SHELLCODE_FN_OFFSET,&fn,sizeof(fn));
-        if (pt_copyin(pid,sc,rw+0x1000,sizeof(sc))<0) break;
-        if (kernel_mprotect(pid,rw+0x1000,0x1000,PROT_READ|PROT_WRITE|PROT_EXEC)!=0) break;
-        mod=pt_call_continue(pid,rw+0x1000,(uint64_t)rw,0ULL,0ULL,0ULL,0ULL,0ULL);
-        kernel_mprotect(pid,rw+0x1000,0x1000,PROT_READ|PROT_WRITE);
-    } while(0);
-    pt_munmap(pid,rw,0x4000);
-    return mod;
-}
 
 int main()
 {
@@ -540,11 +528,8 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
-    // Jailbreak loader pour acces /data
     jb_pid(getpid());
     usleep(500000);
-    // ─────────────────────────────────────────────────────────────────────
-        
 
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
@@ -568,37 +553,37 @@ int main()
             usleep(500000);
             int mib[4]={1,14,8,0}; size_t sz=0;
             sysctl(mib,4,nullptr,&sz,nullptr,0);
-            uint8_t *b=(uint8_t*)malloc(sz); if (!b) continue;
-            if (sysctl(mib,4,b,&sz,nullptr,0)==0) {
-                for (uint8_t *p=b; p<b+sz;) {
-                    int e=*(int*)p; if (e<=0) break;
+            uint8_t *b=(uint8_t*)malloc(sz); if(!b) continue;
+            if(sysctl(mib,4,b,&sz,nullptr,0)==0){
+                for(uint8_t *p=b;p<b+sz;){
+                    int e=*(int*)p; if(e<=0) break;
                     pid_t pp=*(pid_t*)(p+72); p+=e;
-                    if (pp<=1) continue;
+                    if(pp<=1) continue;
                     app_info_t info{};
-                    if (sceKernelGetAppInfo(pp,&info)==0 &&
-                        strncmp(info.title_id,tid_buf,9)==0)
+                    if(sceKernelGetAppInfo(pp,&info)==0 &&
+                       strncmp(info.title_id,tid_buf,9)==0)
                     { game_pid=pp; break; }
                 }
             }
             free(b);
         }
         if (game_pid < 0) { last_bappid=bappid; sleep(5); continue; }
-        plugin_log("Game pid=%d", game_pid);
+        plugin_log("Game pid=%d title=%s", game_pid, tid_buf);
         GameInjectorConfig config = parse_injector_config();
         auto it = config.games.find(std::string(tid_buf));
         if (it == config.games.end()) {
             plugin_log("No config for %s - fakelib only", tid_buf);
             char sid[32]={}; char *fml=nullptr;
             auto fc=config.fakelib_enabled.find(std::string(tid_buf));
-            bool fw=(strncmp(tid_buf,"PPSA",4)==0)&&(fc==config.fakelib_enabled.end()||fc->second);
-            if (fw && resolve_sandbox_id(tid_buf,sid,sizeof(sid))) {
+            bool fw2=(strncmp(tid_buf,"PPSA",4)==0)&&(fc==config.fakelib_enabled.end()||fc->second);
+            if(fw2 && resolve_sandbox_id(tid_buf,sid,sizeof(sid))){
                 char fc2[PATH_MAX];
                 snprintf(fc2,sizeof(fc2),"/mnt/sandbox/%s/app0/fakelib",sid);
                 struct stat st2;
-                for (int t=0;t<30&&stat(fc2,&st2)!=0;t++) usleep(50000);
-                if (stat(fc2,&st2)==0) fml=try_mount_fakelib(tid_buf,sid);
+                for(int t=0;t<30&&stat(fc2,&st2)!=0;t++) usleep(50000);
+                if(stat(fc2,&st2)==0) fml=try_mount_fakelib(tid_buf,sid);
             }
-            if (fml) { wait_for_pid_exit(game_pid); cleanup_after_game(game_pid,sid,fml); }
+            if(fml){ wait_for_pid_exit(game_pid); cleanup_after_game(game_pid,sid,fml); }
         } else {
             inject_into_game(game_pid, tid_buf, it->second, config);
         }
