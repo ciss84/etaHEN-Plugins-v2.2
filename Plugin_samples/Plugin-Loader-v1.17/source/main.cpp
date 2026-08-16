@@ -60,7 +60,7 @@ static bool Get_Running_App_TID(std::string &title_id, int &bappid)
 // ─────────────────────────────────────────────────────────────────────────────
 
 #define MAX_PROC_NAME 0x100
-#define INJECTOR_PORT 9033
+#define INJECTOR_PORT 9021
 
 static int send_injector_data(const char *proc_name,
                                const uint8_t *data, size_t data_size)
@@ -150,7 +150,7 @@ static void send_all_payloads(const char *title_id, const GameInjectorConfig &co
 
     int ok = 0, total = 0;
 
-    // Section [default] si elle existe
+    // Section [default] / [DEFAULT]
     auto def = config.games.find("default");
     if (def != config.games.end()) {
         for (const auto &prx : def->second) {
@@ -159,8 +159,12 @@ static void send_all_payloads(const char *title_id, const GameInjectorConfig &co
         }
     }
 
-    // Section [TITLE_ID]
-    auto it = config.games.find(std::string(title_id));
+    // Section [TITLE_ID] — lookup insensible à la casse
+    std::string tid_lower(title_id);
+    for (auto &c : tid_lower) c = tolower(c);
+    auto it = config.games.find(tid_lower);
+    if (it == config.games.end())
+        it = config.games.find(std::string(title_id));
     if (it != config.games.end()) {
         for (const auto &prx : it->second) {
             total++;
