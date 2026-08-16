@@ -126,7 +126,7 @@ static int wpt(pid_t pid,int*st,int ms){
         long e=(n.tv_sec-s.tv_sec)*1000+(n.tv_nsec-s.tv_nsec)/1000000;
         if(e>=ms)return 0;usleep(10000);}
 }
-static int pt_attach(pid_t pid){
+static int __attribute__((unused)) pt_attach(pid_t pid){
     for(int r=5;r>0;r--){
         if(sys_ptrace(PT_ATTACH,pid,0,0)==0){int s=0;if(wpt(pid,&s,2000)>0)return 0;sys_ptrace(PT_DETACH,pid,0,0);}
         if(errno==ESRCH){usleep(500000);continue;}break;
@@ -184,7 +184,7 @@ static int jb_pid(pid_t pid){
     kernel_set_proc_rootdir(pid,rv);kernel_set_proc_jaildir(pid,rv);
     plugin_log("[JB] OK pid=%d",pid);return 0;
 }
-static long inject_prx(pid_t pid, const char *path) {
+static long __attribute__((unused)) inject_prx(pid_t pid, const char *path) {
     // Pas de pt_mmap (10000 PT_STEP trop perturbateur pendant le chargement)
     // On utilise la stack du process comme buffer + kernel_mprotect pour RWX
     if (access(path, R_OK) != 0) return -1;
