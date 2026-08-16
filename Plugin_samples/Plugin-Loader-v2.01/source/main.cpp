@@ -460,6 +460,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
     int success_count = 0;
     if (kill(pid, 0) == 0 && pt_attach(pid) == 0) {
         if (jb_pid(pid) == 0) {
+        
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        usleep(750000);
+                
             for (const auto &prx : prx_list) {
                 long ret = inject_prx(pid, prx.path.c_str());
                 int32_t rc = (int32_t)ret;
@@ -467,10 +472,19 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 else if (rc == 0) { success_count++; }
                 else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
             }
-        }
-        pt_detach(pid);
-    } else { plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno); }
+        }                
+        pt_detach(pid);           
+    } else { 
+      plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno);
+    }
+
+    // Final resume
+    usleep(500000);
+    sceKernelPrepareToResumeProcess(pid);
+    sceKernelResumeProcess(pid);
+
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
+    
     if (fakelib_wanted)
         printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
                             success_count, prx_list.size(), title_id, fakelib_mount ? "OK" : "none");
