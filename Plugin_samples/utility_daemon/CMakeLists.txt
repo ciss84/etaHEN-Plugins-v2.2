@@ -1,10 +1,19 @@
+###################################################################################################
+# PS5SDK - Example: pipe pirate
+# Uses the read/write primitive to read and write some kernel data.
+# @authors ChendoChap, Specter, Znullptr, LM for etaHEN SDK
+###################################################################################################
+
 cmake_minimum_required (VERSION 3.20)
 
-set(basename "daemon")
-project(${basename} C CXX ASM)
+set(basename "util_daemon")
+project(${basename} C CXX)
+
+set(PLUGIN_TITLE_ID "UTIL00000")
+set(PLUGIN_VERSION "1.00")
 
 # Language Standard Defaults
-set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 set(CMAKE_CXX_EXTENSIONS ON)
@@ -24,12 +33,6 @@ set(D_CWD "${CMAKE_CURRENT_SOURCE_DIR}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${D_CWD}/../bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${D_CWD}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${D_CWD}/bin)	# static libs are archive
-set(D_SRC ${D_CWD}/source)
-
-# Headers
-include_directories	(SYSTEM "${PS5_PAYLOAD_SDK}")
-include_directories	(SYSTEM "${PS5_PAYLOAD_SDK}/include")
-include_directories (SYSTEM "${D_CWD}/../libelfloader/include")
 
 add_executable(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.elf")
@@ -50,23 +53,23 @@ target_compile_options(${PROJECT_NAME} PUBLIC
 
 message("========== build: ${PROJECT_NAME} ==========")
 
-
-file(GLOB SrcFiles ${D_SRC}/*.c ${D_SRC}/*.cpp ${D_SRC}/../include/*.h ${D_SRC}/../include/*.hpp ${D_SRC}/*.s ${D_SRC}/../../extern/tiny-json/*.cpp ${D_SRC}/../../extern/tiny-json/*.hpp ${D_SRC}/../../extern/cJSON/*.cpp ${D_SRC}/../../extern/cJSON/*.hpp ${D_SRC}/../../lib/backtrace.cpp)
+set(D_SRC ${D_CWD}/source)
+file(GLOB SrcFiles ${D_SRC}/*.c ${D_SRC}/*.cpp ${D_SRC}/*.h ${D_SRC}/*.hpp ${D_SRC}/*.s)
 
 set(CMAKE_C_FLAGS "--target=x86_64-sie-ps5 -DPPR -DPS5 -DPS5_FW_VERSION=${V_FW} ")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-keyword-macro -fPIC -fPIE -march=znver2 -Wall -Werror -fstack-protector-all")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -DDEBUG -gfull -gdwarf-2 -O0 -pedantic -pedantic-errors")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 ")
+add_custom_command(TARGET ${basename}
+                   POST_BUILD
+                   COMMAND python3 "${CMAKE_SOURCE_DIR}/lib/make_plugin.py" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf" "${PLUGIN_TITLE_ID}" "${PLUGIN_VERSION}"
+                   COMMAND ${CMAKE_COMMAND} -E remove "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf"                
+                   COMMENT "Finishing Plugin"
+                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 target_sources(${PROJECT_NAME} PRIVATE ${SrcFiles})
-target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/include")
+target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../include")
+target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../shared/include")
 target_link_directories	(${PROJECT_NAME} PUBLIC "${PROJECT_ROOT}/lib")
-add_dependencies(${PROJECT_NAME} NineS shellui hijacker SelfDecryptor elfldr)
-target_link_libraries	(${PROJECT_NAME} PUBLIC hijacker ScePad SceSystemService SceNotification SceNet SceRegMgr SceSysmodule SceUserService SceNetCtl SceSysCore kernel_sys SceAppInstUtil NineS elfldr SelfDecryptor)
+target_link_libraries	(${PROJECT_NAME} PUBLIC SceLibcInternal SceSystemService SceNet SceSysmodule SceUserService SceNetCtl kernel_sys)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-# Add post-build command
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} --remove-section .debug_info --remove-section .debug_abbrev --remove-section .debug_line --remove-section .debug_str --remove-section .debug_loc --remove-section .debug_aranges --remove-section .debug_ranges --remove-section .debug_pubnames --remove-section .debug_pubtypes --remove-section .debug_frame --strip-unneeded $<TARGET_FILE:${PROJECT_NAME}>
-    COMMENT "Stripping debugging information from ${PROJECT_NAME}.elf"
-)
-

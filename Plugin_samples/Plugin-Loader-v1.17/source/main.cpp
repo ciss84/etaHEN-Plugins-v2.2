@@ -21,6 +21,7 @@
 extern "C" {
     int sceSystemServiceGetAppIdOfRunningBigApp();
     int sceSystemServiceGetAppTitleId(int app_id, char *title_id);
+    int sceKernelGetAppInfo(pid_t pid, void *info);
 
     int nmount(struct iovec *iov, unsigned int niov, int flags);
     int unmount(const char *path, int flags);
@@ -259,20 +260,30 @@ int main()
                 if (delay_sec < 1) delay_sec = 1;
 
                 // Attendre que le process game soit réellement spawné et en vie
-                // avant de démarrer le délai (évite injection avant que l'eboot démarre)
                 plugin_log("[TCP] Waiting for game process to spawn...");
                 pid_t game_pid = -1;
                 for (int i = 0; i < 60; i++) {  // max 30s
-                    usleep(500000);  // 500ms
+                    usleep(500000);
                     std::string tid2;
                     int bappid2;
                     if (!Get_Running_App_TID(tid2, bappid2) || bappid2 != bappid)
-                        break;  // jeu fermé avant même de démarrer
-                    // Chercher le PID réel du process eboot
-                    game_pid = find_pid("eboot.bin");
-                    if (game_pid > 0) {
-                        plugin_log("[TCP] Game process alive: pid=%d", game_pid);
                         break;
+
+                    pid_t candidate = find_pid("eboot.bin");
+                    if (candidate <= 0) continue;
+
+                    // Vérifier via sceKernelGetAppInfo que c'est bien notre jeu
+                    uint8_t appinfo[0x80] = {};
+                    if (sceKernelGetAppInfo(candidate, appinfo) == 0) {
+                        char found_tid[10] = {};
+                        memcpy(found_tid, appinfo + 0x10, 9);
+                        plugin_log("[TCP] GetAppInfo pid=%d tid=%s (want %s)",
+                                   candidate, found_tid, tid.c_str());
+                        if (strncmp(found_tid, tid.c_str(), 9) == 0) {
+                            game_pid = candidate;
+                            plugin_log("[TCP] Game confirmed alive: pid=%d", game_pid);
+                            break;
+                        }
                     }
                 }
 
