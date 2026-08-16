@@ -2,8 +2,6 @@
 #include <notify.hpp>
 #include <signal.h>
 #include <string>
-#include <ps5/kernel.h>
-
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <netinet/in.h>
@@ -183,20 +181,9 @@ static void send_all_payloads(const char *title_id, const GameInjectorConfig &co
 //  main
 // ─────────────────────────────────────────────────────────────────────────────
 
-uintptr_t kernel_base = 0;
-
 int main()
 {
     plugin_log("=== PLUGIN LOADER v1.17 [Injector Mode] ===");
-
-    payload_args_t *args = payload_get_args();
-    kernel_base = args->kdata_base_addr;
-
-    // ── FW detection ─────────────────────────────────────────────────────────
-    uint32_t fw       = kernel_get_fw_version();
-    uint32_t fw_major = (fw >> 24) & 0xFF;
-    uint32_t fw_minor = (fw >> 16) & 0xFF;
-    plugin_log("FW: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
 
     // ── Signal handler ────────────────────────────────────────────────────────
     struct sigaction sa{};
@@ -211,7 +198,7 @@ int main()
     //    plugin_log("[SC_PATCH] echec patch SceShellCore");
     //usleep(750000);
 
-    printf_notification("Prx-Loader [TCP] FW: %x.%02x     \nVer:1.17 By @84Ciss", fw_major, fw_minor);
+    printf_notification("Prx-Loader [TCP] By @84Ciss");
 
     // ── Main loop — poll comme l'Injector ────────────────────────────────────
     std::string tid;
