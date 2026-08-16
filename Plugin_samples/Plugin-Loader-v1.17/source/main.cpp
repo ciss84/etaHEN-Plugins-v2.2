@@ -4,10 +4,13 @@
 #include <string>
 
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <errno.h>
 #include <machine/reg.h>
 #include <stdarg.h>
+#include <sys/event.h>
 #include <sys/mman.h>
+#include <sys/mount.h>
 #include <sys/ptrace.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -34,6 +37,8 @@ extern "C" {
     int sceSystemServiceGetAppIdOfRunningBigApp();
     int sceSystemServiceGetAppTitleId(int app_id, char *title_id);
     int sceKernelGetAppInfo(pid_t pid, app_info_t *info);
+    int nmount(struct iovec *iov, unsigned int niov, int flags);
+    int unmount(const char *path, int flags);
 }
 
 // NIDs — porté depuis ps5-plugin-loader
@@ -424,21 +429,213 @@ static bool Get_Running_App_TID(std::string &title_id, int &bappid)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Fakelib / unionfs — porté depuis Plugin-Loader v1.17
+// ─────────────────────────────────────────────────────────────────────────────
+
+#define IOVEC_ENTRY(x) {x ? (char *)x : 0, x ? strlen(x) + 1 : 0}
+#define IOVEC_SIZE(x)  (sizeof(x) / sizeof(struct iovec))
+
+static int mount_unionfs(const char *src, const char *dst)
+{
+    struct iovec iov[] = {
+        IOVEC_ENTRY("fstype"), IOVEC_ENTRY("unionfs"),
+        IOVEC_ENTRY("from"),   IOVEC_ENTRY(src),
+        IOVEC_ENTRY("fspath"), IOVEC_ENTRY(dst),
+    };
+    return nmount(iov, IOVEC_SIZE(iov), 0);
+}
+
+static int find_highest_sandbox_number(const char *title_id)
+{
+    char path[PATH_MAX];
+    int  highest = -1;
+    for (int i = 0; i < 1000; i++) {
+        snprintf(path, sizeof(path), "/mnt/sandbox/%s_%03d", title_id, i);
+        struct stat st;
+        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode))
+            highest = i;
+        else
+            break;
+    }
+    return highest;
+}
+
+static char *find_random_folder(const char *title_id, int sandbox_num)
+{
+    char base[PATH_MAX];
+    snprintf(base, sizeof(base), "/mnt/sandbox/%s_%03d", title_id, sandbox_num);
+    DIR *dir = opendir(base);
+    if (!dir) return nullptr;
+    struct dirent *entry;
+    while ((entry = readdir(dir))) {
+        if (entry->d_name[0] == '.') continue;
+        char full[PATH_MAX];
+        snprintf(full, sizeof(full), "%s/%s/common/lib", base, entry->d_name);
+        struct stat st;
+        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
+            closedir(dir);
+            return strdup(entry->d_name);
+        }
+    }
+    closedir(dir);
+    return nullptr;
+}
+
+static bool resolve_sandbox_id(const char *title_id, char *sandbox_id, size_t size)
+{
+    int sandbox_num = -1;
+    for (int attempt = 0; attempt < 20 && sandbox_num < 0; attempt++) {
+        sandbox_num = find_highest_sandbox_number(title_id);
+        if (sandbox_num < 0) usleep(50000);
+    }
+    if (sandbox_num < 0) {
+        plugin_log("[Fakelib] No sandbox found for %s", title_id);
+        return false;
+    }
+    snprintf(sandbox_id, size, "%s_%03d", title_id, sandbox_num);
+    plugin_log("[Fakelib] Sandbox: %s", sandbox_id);
+    return true;
+}
+
+static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
+{
+    char fakelib_src[PATH_MAX];
+    snprintf(fakelib_src, sizeof(fakelib_src),
+             "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
+
+    struct stat st;
+    if (stat(fakelib_src, &st) != 0) {
+        plugin_log("[Fakelib] No fakelib in app0 (%s), skip", sandbox_id);
+        return nullptr;
+    }
+
+    int sandbox_num = find_highest_sandbox_number(title_id);
+    if (sandbox_num < 0) return nullptr;
+
+    char *random_folder = find_random_folder(title_id, sandbox_num);
+    if (!random_folder) return nullptr;
+
+    char *mount_dst = (char *)malloc(PATH_MAX + 1);
+    if (!mount_dst) { free(random_folder); return nullptr; }
+
+    snprintf(mount_dst, PATH_MAX + 1,
+             "/mnt/sandbox/%s/%s/common/lib", sandbox_id, random_folder);
+    free(random_folder);
+
+    int res = mount_unionfs(fakelib_src, mount_dst);
+    if (res != 0) {
+        plugin_log("[Fakelib] mount_unionfs failed: %d (errno %d)", res, errno);
+        unmount(mount_dst, MNT_FORCE);
+        free(mount_dst);
+        return nullptr;
+    }
+
+    plugin_log("[Fakelib] Mounted %s -> %s", fakelib_src, mount_dst);
+    printf_notification("Fakelib mounted for %s     ", title_id);
+    return mount_dst;
+}
+
+static void wait_for_pid_exit(pid_t pid)
+{
+    int kq = kqueue();
+    if (kq == -1) { sleep(3); return; }
+    struct kevent kev;
+    EV_SET(&kev, pid, EVFILT_PROC, EV_ADD | EV_ENABLE | EV_CLEAR,
+           NOTE_EXIT, 0, nullptr);
+    if (kevent(kq, &kev, 1, nullptr, 0, nullptr) == -1) {
+        close(kq); sleep(3); return;
+    }
+    plugin_log("[Wait] Watching pid %d for exit...", pid);
+    while (1) {
+        struct kevent ev;
+        int nev = kevent(kq, nullptr, 0, &ev, 1, nullptr);
+        if (nev > 0 && (ev.fflags & NOTE_EXIT)) break;
+        if (nev < 0) break;
+    }
+    close(kq);
+    plugin_log("[Wait] pid %d exited", pid);
+}
+
+static int cleanup_directory(const char *path)
+{
+    DIR *d = opendir(path);
+    if (!d) return -1;
+    int result = 0;
+    struct dirent *entry;
+    while ((entry = readdir(d))) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+            continue;
+        char full[PATH_MAX];
+        snprintf(full, sizeof(full), "%s/%s", path, entry->d_name);
+        struct stat st;
+        if (stat(full, &st) != 0) { result = -1; break; }
+        if (S_ISDIR(st.st_mode))
+            if (cleanup_directory(full) != 0) { result = -1; break; }
+    }
+    closedir(d);
+    if (result == 0) result = rmdir(path);
+    return result;
+}
+
+static void cleanup_after_game(const char *sandbox_id, char *fakelib_mount)
+{
+    if (!fakelib_mount) return;
+    char sandbox_app0[PATH_MAX];
+    snprintf(sandbox_app0, sizeof(sandbox_app0),
+             "/mnt/sandbox/%s/app0", sandbox_id);
+    int wait_count = 0;
+    struct stat st;
+    while (stat(sandbox_app0, &st) == 0 && wait_count < 30) {
+        sleep(1); wait_count++;
+    }
+    plugin_log("[Cleanup] Unmounting %s", fakelib_mount);
+    unmount(fakelib_mount, 0);
+    char sandbox_dir[PATH_MAX];
+    snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sandbox_id);
+    plugin_log("[Cleanup] Removing %s", sandbox_dir);
+    if (cleanup_directory(sandbox_dir) == 0)
+        printf_notification("Sandbox %s cleaned up     ", sandbox_id);
+    free(fakelib_mount);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  inject_into_game — attend le spawn + jb_pid + inject_prx_attached
 // ─────────────────────────────────────────────────────────────────────────────
 
 static void inject_into_game(const char *title_id,
-                              const std::vector<PRXConfig> &prx_list)
+                              const std::vector<PRXConfig> &prx_list,
+                              const GameInjectorConfig &config)
 {
     plugin_log("========================================");
     plugin_log("Injecting into %s", title_id);
     plugin_log("========================================");
 
-    // Délai depuis l'INI (frame_delay/60 secondes)
     int delay_sec = prx_list.empty() ? 5 : prx_list[0].frame_delay / 60;
     if (delay_sec < 1) delay_sec = 1;
 
-    // Attendre que le process game soit spawné (max 30s)
+    // ── Fakelib ───────────────────────────────────────────────────────────────
+    char sandbox_id[32]  = {};
+    char *fakelib_mount  = nullptr;
+
+    auto fakelib_cfg    = config.fakelib_enabled.find(std::string(title_id));
+    bool fakelib_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
+                          (fakelib_cfg == config.fakelib_enabled.end() ||
+                           fakelib_cfg->second);
+
+    if (fakelib_wanted && resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id))) {
+        char fakelib_check[PATH_MAX];
+        snprintf(fakelib_check, sizeof(fakelib_check),
+                 "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
+        struct stat st;
+        for (int t = 0; t < 30 && stat(fakelib_check, &st) != 0; t++)
+            usleep(50000);
+        if (stat(fakelib_check, &st) == 0)
+            fakelib_mount = try_mount_fakelib(title_id, sandbox_id);
+        else
+            plugin_log("[Fakelib] No app0/fakelib for %s, skip", title_id);
+    }
+
+    // ── Attendre le spawn du process ─────────────────────────────────────────
     plugin_log("[INJ] Waiting for game process (delay=%ds)...", delay_sec);
     pid_t pid = -1;
     for (int i = 0; i < 60; i++) {
@@ -450,49 +647,51 @@ static void inject_into_game(const char *title_id,
     if (pid <= 0) {
         plugin_log("[INJ] Game process not found, skip");
         printf_notification("ploader: [%s] process not found     ", title_id);
+        if (fakelib_mount) { unmount(fakelib_mount, MNT_FORCE); free(fakelib_mount); }
         return;
     }
 
-    // Délai post-spawn pour laisser le jeu initialiser
     plugin_log("[INJ] pid=%d found, waiting %ds...", pid, delay_sec);
     printf_notification("ploader: [%s] pid=%d\nInject dans %ds...",
                         title_id, pid, delay_sec);
     sleep(delay_sec);
 
-    // Attach + jailbreak + inject
+    // ── Attach + jailbreak + inject ───────────────────────────────────────────
     if (pt_attach(pid) < 0) {
         plugin_log("[INJ] pt_attach failed");
         printf_notification("ploader: [%s] attach failed     ", title_id);
+        if (fakelib_mount) { unmount(fakelib_mount, MNT_FORCE); free(fakelib_mount); }
         return;
     }
 
     if (jb_pid(pid) != 0) {
         plugin_log("[INJ] jb_pid failed");
         pt_detach(pid);
-        printf_notification("ploader: [%s] jb_pid failed     ", title_id);
+        if (fakelib_mount) { unmount(fakelib_mount, MNT_FORCE); free(fakelib_mount); }
         return;
     }
 
     int ok = 0;
     for (const auto &prx : prx_list) {
-        long ret    = inject_prx_attached(pid, prx.path.c_str());
+        long    ret = inject_prx_attached(pid, prx.path.c_str());
         int32_t rc  = (int32_t)ret;
-        if (rc > 0) {
-            plugin_log("[INJ] OK modid=%d %s", rc, prx.path.c_str());
-            ok++;
-        } else if (rc == 0) {
-            plugin_log("[INJ] modid=0 (already loaded?) %s", prx.path.c_str());
-            ok++;
-        } else {
-            plugin_log("[INJ] FAILED 0x%08x %s", (uint32_t)rc, prx.path.c_str());
-        }
+        if (rc > 0)       { plugin_log("[INJ] OK modid=%d %s", rc, prx.path.c_str()); ok++; }
+        else if (rc == 0) { plugin_log("[INJ] modid=0 (already?) %s", prx.path.c_str()); ok++; }
+        else              { plugin_log("[INJ] FAILED 0x%08x %s", (uint32_t)rc, prx.path.c_str()); }
     }
 
     pt_detach(pid);
 
     plugin_log("[INJ] %d/%zu injected into %s", ok, prx_list.size(), title_id);
-    printf_notification("ploader: %d/%zu injected\n[%s]     \nBy @84Ciss",
-                        ok, prx_list.size(), title_id);
+    printf_notification("ploader: %d/%zu injected [%s]%s     \nBy @84Ciss",
+                        ok, prx_list.size(), title_id,
+                        fakelib_mount ? "\nFakelib: OK" : "");
+
+    // ── Wait game exit + cleanup fakelib ─────────────────────────────────────
+    if (fakelib_mount) {
+        wait_for_pid_exit(pid);
+        cleanup_after_game(sandbox_id, fakelib_mount);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -547,12 +746,12 @@ int main()
                 // Section [default]
                 auto def = config.games.find("default");
                 if (def != config.games.end())
-                    inject_into_game(tid.c_str(), def->second);
+                    inject_into_game(tid.c_str(), def->second, config);
 
                 // Section [TITLE_ID]
                 auto it = config.games.find(tid);
                 if (it != config.games.end())
-                    inject_into_game(tid.c_str(), it->second);
+                    inject_into_game(tid.c_str(), it->second, config);
                 else if (def == config.games.end())
                     plugin_log("No config for %s", tid.c_str());
 
