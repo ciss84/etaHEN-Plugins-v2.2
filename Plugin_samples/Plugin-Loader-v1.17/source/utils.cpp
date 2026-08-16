@@ -69,6 +69,8 @@ GameInjectorConfig parse_injector_config()
             if (!line.empty() && line[0] != ';' && line[0] != '#') {
                 if (line[0] == '[' && line.back() == ']') {
                     current_tid = line.substr(1, line.size() - 2);
+                    // normalize DEFAULT → default
+                    for (auto &c : current_tid) c = tolower(c);
                     plugin_log("Config: section [%s]", current_tid.c_str());
                 }
                 else if (!current_tid.empty() && line.find("fakelib") == 0) {

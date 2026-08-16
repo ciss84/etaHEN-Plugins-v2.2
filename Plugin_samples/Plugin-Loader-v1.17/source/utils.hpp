@@ -2,14 +2,11 @@
 
 #include <stddef.h>
 #include <stdio.h>
-#include <sys/signal.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include "hijacker/patch_shellcore.hpp"
 #include "notify.hpp"
-#include "backtrace.hpp"
 
 #include <map>
 #include <string>
@@ -17,7 +14,7 @@
 
 struct PRXConfig {
     std::string path;
-    int         frame_delay;  // conservé pour compatibilité config INI, non utilisé en TCP
+    int         frame_delay;  // frames → secondes via /60
 };
 
 struct GameInjectorConfig {

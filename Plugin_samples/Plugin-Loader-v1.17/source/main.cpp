@@ -2,29 +2,73 @@
 #include <notify.hpp>
 #include <signal.h>
 #include <string>
+
 #include <arpa/inet.h>
-#include <dirent.h>
-#include <netinet/in.h>
+#include <errno.h>
+#include <machine/reg.h>
 #include <stdarg.h>
-#include <sys/mount.h>
-#include <sys/socket.h>
+#include <sys/mman.h>
+#include <sys/ptrace.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/sysctl.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <ps5/kernel.h>
+#include <ps5/payload.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Externs
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define IOVEC_ENTRY(x) {x ? (char *)x : 0, x ? strlen(x) + 1 : 0}
-#define IOVEC_SIZE(x)  (sizeof(x) / sizeof(struct iovec))
+typedef struct {
+    uint32_t app_id;
+    uint64_t unknown1;
+    char     title_id[16];
+    char     unknown2[0x40];
+} app_info_t;
 
 extern "C" {
     int sceSystemServiceGetAppIdOfRunningBigApp();
     int sceSystemServiceGetAppTitleId(int app_id, char *title_id);
-
-    int nmount(struct iovec *iov, unsigned int niov, int flags);
-    int unmount(const char *path, int flags);
+    int sceKernelGetAppInfo(pid_t pid, app_info_t *info);
+    int sceKernelSendNotificationRequest(int, void*, size_t, int);
 }
+
+// NIDs — porté depuis ps5-plugin-loader
+#define NID_LOADMOD  "wzvqT4UqKX8"  // sceKernelLoadStartModule
+#define NID_SYSCALL  "HoLVWNanBBc"  // getpid (syscall wrapper)
+
+#define AUTHID_SYSTEM   0x4801000000000013ULL
+#define AUTHID_DEBUGGER 0x4800000000010003ULL
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Shellcode ptrace — porté depuis ps5-plugin-loader
+//  mmap anonyme + shellcode INT3 → sceKernelLoadStartModule → SIGTRAP → RAX
+// ─────────────────────────────────────────────────────────────────────────────
+
+#define SHELLCODE_FN_OFFSET 14
+
+static const uint8_t k_shellcode[] = {
+    0x55,                               // push rbp
+    0x48, 0x89, 0xE5,                   // mov  rbp, rsp
+    0x48, 0x83, 0xE4, 0xF0,             // and  rsp, -16
+    0x48, 0x83, 0xEC, 0x28,             // sub  rsp, 0x28
+    0x49, 0xBF,                         // mov  r15, imm64 (patché runtime)
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+    0x31, 0xF6,                         // xor  esi, esi
+    0x31, 0xD2,                         // xor  edx, edx
+    0x31, 0xC9,                         // xor  ecx, ecx
+    0x45, 0x31, 0xC0,                   // xor  r8d, r8d
+    0x45, 0x31, 0xC9,                   // xor  r9d, r9d
+    0x41, 0xFF, 0xD7,                   // call r15  (rdi = path)
+    0x48, 0x89, 0xEC,                   // mov  rsp, rbp
+    0x5D,                               // pop  rbp
+    0xCC                                // int3 → SIGTRAP, RAX = result
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Signal handler
@@ -37,176 +81,419 @@ void sig_handler(int signo)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Helpers
+//  ptrace helpers — portés depuis ps5-plugin-loader
 // ─────────────────────────────────────────────────────────────────────────────
 
-static pid_t find_pid(const char *name)
+static int sys_ptrace(int request, pid_t pid, caddr_t addr, int data)
 {
-    int      mib[4]  = {1, 14, 8, 0};
-    pid_t    mypid   = getpid();
-    pid_t    pid     = -1;
-    size_t   buf_size;
-    uint8_t *buf;
+    pid_t    mypid  = getpid();
+    uint64_t authid = kernel_get_ucred_authid(mypid);
+    if (!authid) return -1;
 
-    if (sysctl(mib, 4, 0, &buf_size, 0, 0)) return -1;
-    if (!(buf = (uint8_t *)malloc(buf_size))) return -1;
-    if (sysctl(mib, 4, buf, &buf_size, 0, 0)) { free(buf); return -1; }
+    kernel_set_ucred_authid(mypid, AUTHID_DEBUGGER);
+    int ret = (int)syscall(SYS_ptrace, request, pid, addr, data);
+    int err = errno;
+    kernel_set_ucred_authid(mypid, authid);
+    errno = err;
+    return ret;
+}
 
-    for (uint8_t *ptr = buf; ptr < buf + buf_size;) {
-        int   ki_structsize = *(int *)ptr;
-        pid_t ki_pid        = *(pid_t *)&ptr[72];
-        char *ki_tdname     = (char *)&ptr[447];
-        ptr += ki_structsize;
-        if (!strcmp(name, ki_tdname) && ki_pid != mypid)
-            pid = ki_pid;
+static int waitpid_timeout(pid_t pid, int *status, int timeout_ms)
+{
+    struct timespec start, now;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    while (true) {
+        pid_t res = waitpid(pid, status, WNOHANG);
+        if (res == pid) return 1;
+        if (res < 0)   return -1;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long elapsed = (now.tv_sec - start.tv_sec) * 1000
+                     + (now.tv_nsec - start.tv_nsec) / 1000000;
+        if (elapsed >= timeout_ms) return 0;
+        usleep(10000);
     }
-    free(buf);
-    return pid;
+}
+
+static int pt_attach(pid_t pid)
+{
+    int retries = 5;
+    while (retries-- > 0) {
+        if (sys_ptrace(PT_ATTACH, pid, 0, 0) == 0) {
+            int status = 0;
+            if (waitpid_timeout(pid, &status, 2000) > 0) {
+                plugin_log("[PT] attached pid=%d status=0x%x", pid, status);
+                return 0;
+            }
+            sys_ptrace(PT_DETACH, pid, 0, 0);
+        }
+        if (errno == ESRCH) { usleep(500000); continue; }
+        break;
+    }
+    plugin_log("[PT] attach failed pid=%d errno=%d", pid, errno);
+    return -1;
+}
+
+static int pt_detach(pid_t pid)
+{
+    return sys_ptrace(PT_DETACH, pid, 0, 0);
+}
+
+static int pt_getregs(pid_t pid, struct reg *r)
+{
+    return sys_ptrace(PT_GETREGS, pid, (caddr_t)r, 0);
+}
+
+static int pt_setregs(pid_t pid, const struct reg *r)
+{
+    return sys_ptrace(PT_SETREGS, pid, (caddr_t)r, 0);
+}
+
+static int pt_copyin(pid_t pid, const void *buf, intptr_t addr, size_t len)
+{
+    struct ptrace_io_desc iod = {
+        .piod_op   = PIOD_WRITE_D,
+        .piod_offs = (void *)addr,
+        .piod_addr = (void *)buf,
+        .piod_len  = len
+    };
+    return sys_ptrace(PT_IO, pid, (caddr_t)&iod, 0);
+}
+
+static intptr_t pt_resolve(pid_t pid, const char *nid)
+{
+    intptr_t a = kernel_dynlib_resolve(pid, 0x1, nid);
+    if (a) return a;
+    return kernel_dynlib_resolve(pid, 0x2001, nid);
+}
+
+static long pt_syscall(pid_t pid, int sysno, ...)
+{
+    intptr_t addr = pt_resolve(pid, NID_SYSCALL);
+    if (!addr) return -1;
+    addr += 0xA;
+
+    struct reg jmp, bak;
+    if (pt_getregs(pid, &bak)) return -1;
+    memcpy(&jmp, &bak, sizeof(jmp));
+
+    jmp.r_rip = addr;
+    jmp.r_rax = (uint64_t)sysno;
+
+    va_list ap;
+    va_start(ap, sysno);
+    jmp.r_rdi = va_arg(ap, uint64_t);
+    jmp.r_rsi = va_arg(ap, uint64_t);
+    jmp.r_rdx = va_arg(ap, uint64_t);
+    jmp.r_r10 = va_arg(ap, uint64_t);
+    jmp.r_r8  = va_arg(ap, uint64_t);
+    jmp.r_r9  = va_arg(ap, uint64_t);
+    va_end(ap);
+
+    if (pt_setregs(pid, &jmp)) return -1;
+
+    int max_steps = 10000;
+    while (jmp.r_rsp <= bak.r_rsp && max_steps-- > 0) {
+        if (sys_ptrace(PT_STEP, pid, (caddr_t)1, 0)) return -1;
+        if (waitpid_timeout(pid, NULL, 1000) <= 0)   return -1;
+        if (pt_getregs(pid, &jmp))                    return -1;
+    }
+
+    pt_setregs(pid, &bak);
+    return (long)jmp.r_rax;
+}
+
+static intptr_t pt_mmap(pid_t pid, intptr_t addr, size_t len,
+                         int prot, int flags, int fd, off_t off)
+{
+    return pt_syscall(pid, SYS_mmap,
+        (uint64_t)addr, (uint64_t)len, (uint64_t)prot,
+        (uint64_t)flags, (uint64_t)fd, (uint64_t)off);
+}
+
+static int pt_munmap(pid_t pid, intptr_t addr, size_t len)
+{
+    return (int)pt_syscall(pid, SYS_munmap, (uint64_t)addr, (uint64_t)len);
+}
+
+static long pt_call_continue(pid_t pid, intptr_t addr, ...)
+{
+    struct reg jmp, bak;
+    if (pt_getregs(pid, &bak)) return -1;
+    memcpy(&jmp, &bak, sizeof(jmp));
+
+    jmp.r_rip = addr;
+
+    va_list ap;
+    va_start(ap, addr);
+    jmp.r_rdi = va_arg(ap, uint64_t);
+    jmp.r_rsi = va_arg(ap, uint64_t);
+    jmp.r_rdx = va_arg(ap, uint64_t);
+    jmp.r_rcx = va_arg(ap, uint64_t);
+    jmp.r_r8  = va_arg(ap, uint64_t);
+    jmp.r_r9  = va_arg(ap, uint64_t);
+    va_end(ap);
+
+    if (pt_setregs(pid, &jmp)) return -1;
+
+    int status = 0;
+    sys_ptrace(PT_CONTINUE, pid, (caddr_t)1, 0);
+    if (waitpid_timeout(pid, &status, 5000) <= 0) {
+        plugin_log("[PT] pt_call_continue: timeout");
+        pt_setregs(pid, &bak);
+        return -1;
+    }
+
+    if (pt_getregs(pid, &jmp)) return -1;
+    plugin_log("[PT] pt_call_continue: RIP=0x%llx RAX=0x%llx",
+               (unsigned long long)jmp.r_rip,
+               (unsigned long long)jmp.r_rax);
+
+    pt_setregs(pid, &bak);
+    return (long)jmp.r_rax;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Game detection — porté depuis Injector (sceSystemServiceGetAppIdOfRunningBigApp)
+//  jb_pid — jailbreak le process game (porté depuis ps5-plugin-loader)
+//  Kernel direct : ucred patch + rootvnode, sans toucher SceShellCore
+// ─────────────────────────────────────────────────────────────────────────────
+
+static int jb_pid(pid_t pid)
+{
+    intptr_t rv    = kernel_get_root_vnode();
+    intptr_t ucred = kernel_get_proc_ucred(pid);
+    intptr_t fd    = kernel_get_proc_filedesc(pid);
+
+    plugin_log("[JB] pid=%d rv=0x%llx ucred=0x%llx fd=0x%llx",
+               pid, (unsigned long long)rv,
+               (unsigned long long)ucred,
+               (unsigned long long)fd);
+
+    if (!rv || !ucred || !fd) {
+        plugin_log("[JB] missing kernel pointers");
+        return -1;
+    }
+
+    const uint32_t zero  = 0;
+    const int64_t  caps  = -1LL;
+    const uint64_t authid = AUTHID_SYSTEM;
+    const uint8_t  attr   = 0x80;
+
+    #define TRY(src, off, len) \
+        if (kernel_copyin(src, ucred + (off), len) < 0) { \
+            plugin_log("[JB] copyin failed offset=0x%x", (off)); return -1; }
+
+    TRY(&zero,   0x04, 4);   // cr_uid
+    TRY(&zero,   0x08, 4);   // cr_ruid
+    TRY(&zero,   0x0C, 4);   // cr_svuid
+    TRY(&zero,   0x10, 4);   // cr_ngroups
+    TRY(&zero,   0x14, 4);   // cr_rgid
+    TRY(&zero,   0x18, 4);   // cr_svgid
+    TRY(&authid, 0x58, 8);   // cr_sceAuthID
+    TRY(&caps,   0x60, 8);   // cr_sceCaps[0]
+    TRY(&caps,   0x68, 8);   // cr_sceCaps[1]
+    TRY(&attr,   0x83, 1);   // cr_sceAttrs
+
+    #undef TRY
+
+    kernel_set_proc_rootdir(pid, rv);
+    kernel_set_proc_jaildir(pid, rv);
+
+    plugin_log("[JB] OK authid=0x%llx",
+               (unsigned long long)kernel_get_ucred_authid(pid));
+    return 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  inject_prx_attached — porté depuis ps5-plugin-loader
+//  ptrace + mmap anonyme + shellcode INT3 → sceKernelLoadStartModule
+//  Zéro modification du code du jeu (pas de PLT hook)
+// ─────────────────────────────────────────────────────────────────────────────
+
+static long inject_prx_attached(pid_t pid, const char *prx_path)
+{
+    plugin_log("[INJ] pid=%d path=%s", pid, prx_path);
+
+    if (access(prx_path, R_OK) != 0) {
+        plugin_log("[INJ] file not accessible: %s", prx_path);
+        return -1;
+    }
+
+    const intptr_t fn = pt_resolve(pid, NID_LOADMOD);
+    if (!fn) {
+        plugin_log("[INJ] NID_LOADMOD not resolved");
+        return -1;
+    }
+    plugin_log("[INJ] sceKernelLoadStartModule @ 0x%lx", (unsigned long)fn);
+
+    const size_t   path_len = strlen(prx_path) + 1;
+    const intptr_t rw_page  = pt_mmap(pid, 0, 0x4000,
+                                       PROT_READ | PROT_WRITE,
+                                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (rw_page == (intptr_t)-1 || rw_page == 0) {
+        plugin_log("[INJ] pt_mmap failed errno=%d", errno);
+        return -1;
+    }
+
+    const intptr_t remote_path = rw_page;
+    const intptr_t remote_sc   = rw_page + 0x1000;
+    long mod = -1;
+
+    do {
+        if (pt_copyin(pid, prx_path, remote_path, path_len) < 0) {
+            plugin_log("[INJ] copyin path failed");
+            break;
+        }
+
+        uint8_t sc[sizeof(k_shellcode)];
+        memcpy(sc, k_shellcode, sizeof(sc));
+        memcpy(sc + SHELLCODE_FN_OFFSET, &fn, sizeof(fn));
+
+        if (pt_copyin(pid, sc, remote_sc, sizeof(sc)) < 0) {
+            plugin_log("[INJ] copyin shellcode failed");
+            break;
+        }
+
+        if (kernel_mprotect(pid, remote_sc, 0x1000,
+                            PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+            plugin_log("[INJ] kernel_mprotect RWX failed");
+            break;
+        }
+
+        mod = pt_call_continue(pid, remote_sc,
+                               (uint64_t)remote_path,
+                               0ULL, 0ULL, 0ULL, 0ULL, 0ULL);
+
+        kernel_mprotect(pid, remote_sc, 0x1000, PROT_READ | PROT_WRITE);
+    } while (0);
+
+    pt_munmap(pid, rw_page, 0x4000);
+    plugin_log("[INJ] modid=0x%llx", (unsigned long long)(uint64_t)mod);
+    return mod;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  find_pid_by_title — sysctl + sceKernelGetAppInfo (ps5-plugin-loader)
+// ─────────────────────────────────────────────────────────────────────────────
+
+static pid_t find_pid_by_title(const char *title_id)
+{
+    int    mib[4] = {1, 14, 8, 0};
+    size_t sz     = 0;
+    sysctl(mib, 4, NULL, &sz, NULL, 0);
+
+    uint8_t *buf = (uint8_t *)malloc(sz);
+    if (!buf) return -1;
+    if (sysctl(mib, 4, buf, &sz, NULL, 0) < 0) { free(buf); return -1; }
+
+    pid_t  self  = getpid();
+    pid_t  found = -1;
+    uint8_t *p   = buf;
+
+    while (p + 4 <= buf + sz) {
+        int   elen = *(int *)p;
+        if (elen <= 0 || p + elen > buf + sz) break;
+        pid_t pid  = *(pid_t *)(p + 72);
+        if (pid > 1 && pid != self) {
+            app_info_t info = {};
+            if (sceKernelGetAppInfo(pid, &info) == 0 && info.title_id[0]) {
+                if (strncmp(info.title_id, title_id, 9) == 0) {
+                    found = pid;
+                    break;
+                }
+            }
+        }
+        p += elen;
+    }
+
+    free(buf);
+    plugin_log("[PID] [%s] -> pid=%d", title_id, (int)found);
+    return found;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Game detection — poll sceSystemServiceGetAppIdOfRunningBigApp
 // ─────────────────────────────────────────────────────────────────────────────
 
 static bool Get_Running_App_TID(std::string &title_id, int &bappid)
 {
     char tid[255] = {};
     bappid = sceSystemServiceGetAppIdOfRunningBigApp();
-    if (bappid < 0)
-        return false;
-    if (sceSystemServiceGetAppTitleId(bappid, tid) != 0)
-        return false;
+    if (bappid < 0) return false;
+    if (sceSystemServiceGetAppTitleId(bappid, tid) != 0) return false;
     title_id = std::string(tid);
     return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  TCP send — porté depuis Injector send_injector_data()
-//  Envoie un payload binaire au daemon etaHEN sur 127.0.0.1:9033
-//  Header = nom du process (proc_name, MAX_PROC_NAME bytes)
-//  Body   = données binaires (PRX ou ELF)
+//  inject_into_game — attend le spawn + jb_pid + inject_prx_attached
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define MAX_PROC_NAME 0x100
-#define INJECTOR_PORT 9021
-
-static int send_injector_data(const char *proc_name,
-                               const uint8_t *data, size_t data_size)
-{
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        plugin_log("[TCP] socket() failed");
-        return -1;
-    }
-
-    struct sockaddr_in addr = {};
-    addr.sin_family      = AF_INET;
-    addr.sin_port        = htons(INJECTOR_PORT);
-    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
-
-    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        plugin_log("[TCP] connect() failed — etaHEN daemon actif ?");
-        close(sock);
-        return -1;
-    }
-
-    // Header : proc_name padded à MAX_PROC_NAME bytes
-    uint8_t header[MAX_PROC_NAME] = {};
-    size_t  name_len = strlen(proc_name);
-    if (name_len > MAX_PROC_NAME) name_len = MAX_PROC_NAME;
-    memcpy(header, proc_name, name_len);
-
-    if (send(sock, header, MAX_PROC_NAME, 0) != MAX_PROC_NAME) {
-        plugin_log("[TCP] send header failed");
-        close(sock);
-        return -1;
-    }
-
-    ssize_t sent = send(sock, data, data_size, 0);
-    if (sent < 0 || (size_t)sent != data_size) {
-        plugin_log("[TCP] send data failed");
-        close(sock);
-        return -1;
-    }
-
-    plugin_log("[TCP] Sent %zu bytes to 127.0.0.1:%d (proc: %s)",
-               MAX_PROC_NAME + data_size, INJECTOR_PORT, proc_name);
-    close(sock);
-    return 0;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Injection d'un PRX via TCP — lit le fichier et envoie à etaHEN
-// ─────────────────────────────────────────────────────────────────────────────
-
-static bool inject_prx_tcp(const char *title_id, const char *prx_path)
-{
-    struct stat st;
-    if (stat(prx_path, &st) < 0) {
-        plugin_log("[TCP] File not found: %s", prx_path);
-        return false;
-    }
-
-    FILE *f = fopen(prx_path, "rb");
-    if (!f) {
-        plugin_log("[TCP] fopen failed: %s", prx_path);
-        return false;
-    }
-
-    uint8_t *buf = (uint8_t *)malloc(st.st_size);
-    if (!buf) { fclose(f); return false; }
-
-    fread(buf, 1, st.st_size, f);
-    fclose(f);
-
-    plugin_log("[TCP] Injecting %s -> %s", prx_path, title_id);
-    int ret = send_injector_data("eboot.bin", buf, st.st_size);
-    free(buf);
-
-    return ret == 0;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Envoie tous les payloads pour un title_id
-// ─────────────────────────────────────────────────────────────────────────────
-
-static void send_all_payloads(const char *title_id, const GameInjectorConfig &config)
+static void inject_into_game(const char *title_id,
+                              const std::vector<PRXConfig> &prx_list)
 {
     plugin_log("========================================");
     plugin_log("Injecting into %s", title_id);
     plugin_log("========================================");
 
-    int ok = 0, total = 0;
+    // Délai depuis l'INI (frame_delay/60 secondes)
+    int delay_sec = prx_list.empty() ? 5 : prx_list[0].frame_delay / 60;
+    if (delay_sec < 1) delay_sec = 1;
 
-    // Section [default] / [DEFAULT]
-    auto def = config.games.find("default");
-    if (def != config.games.end()) {
-        for (const auto &prx : def->second) {
-            total++;
-            if (inject_prx_tcp(title_id, prx.path.c_str())) ok++;
-        }
+    // Attendre que le process game soit spawné (max 30s)
+    plugin_log("[INJ] Waiting for game process (delay=%ds)...", delay_sec);
+    pid_t pid = -1;
+    for (int i = 0; i < 60; i++) {
+        usleep(500000);
+        pid = find_pid_by_title(title_id);
+        if (pid > 0) break;
     }
 
-    // Section [TITLE_ID] — lookup insensible à la casse
-    std::string tid_lower(title_id);
-    for (auto &c : tid_lower) c = tolower(c);
-    auto it = config.games.find(tid_lower);
-    if (it == config.games.end())
-        it = config.games.find(std::string(title_id));
-    if (it != config.games.end()) {
-        for (const auto &prx : it->second) {
-            total++;
-            if (inject_prx_tcp(title_id, prx.path.c_str())) ok++;
-        }
-    }
-
-    if (total == 0) {
-        plugin_log("[TCP] No config for %s", title_id);
+    if (pid <= 0) {
+        plugin_log("[INJ] Game process not found, skip");
+        printf_notification("ploader: [%s] process not found     ", title_id);
         return;
     }
 
-    plugin_log("[TCP] %d/%d injected into %s", ok, total, title_id);
-    printf_notification("%d/%d injected into %s     \nBy @84Ciss", ok, total, title_id);
+    // Délai post-spawn pour laisser le jeu initialiser
+    plugin_log("[INJ] pid=%d found, waiting %ds...", pid, delay_sec);
+    printf_notification("ploader: [%s] pid=%d\nInject dans %ds...",
+                        title_id, pid, delay_sec);
+    sleep(delay_sec);
+
+    // Attach + jailbreak + inject
+    if (pt_attach(pid) < 0) {
+        plugin_log("[INJ] pt_attach failed");
+        printf_notification("ploader: [%s] attach failed     ", title_id);
+        return;
+    }
+
+    if (jb_pid(pid) != 0) {
+        plugin_log("[INJ] jb_pid failed");
+        pt_detach(pid);
+        printf_notification("ploader: [%s] jb_pid failed     ", title_id);
+        return;
+    }
+
+    int ok = 0;
+    for (const auto &prx : prx_list) {
+        long ret    = inject_prx_attached(pid, prx.path.c_str());
+        int32_t rc  = (int32_t)ret;
+        if (rc > 0) {
+            plugin_log("[INJ] OK modid=%d %s", rc, prx.path.c_str());
+            ok++;
+        } else if (rc == 0) {
+            plugin_log("[INJ] modid=0 (already loaded?) %s", prx.path.c_str());
+            ok++;
+        } else {
+            plugin_log("[INJ] FAILED 0x%08x %s", (uint32_t)rc, prx.path.c_str());
+        }
+    }
+
+    pt_detach(pid);
+
+    plugin_log("[INJ] %d/%zu injected into %s", ok, prx_list.size(), title_id);
+    printf_notification("ploader: %d/%zu injected\n[%s]     \nBy @84Ciss",
+                        ok, prx_list.size(), title_id);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,24 +502,32 @@ static void send_all_payloads(const char *title_id, const GameInjectorConfig &co
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v1.17 [Injector Mode] ===");
+    plugin_log("=== PLUGIN LOADER v1.17 [ptrace mode] ===");
 
-    // ── Signal handler ────────────────────────────────────────────────────────
+    payload_args_t *args = payload_get_args();
+    if (args)
+        plugin_log("kbase=0x%llx", (unsigned long long)args->kdata_base_addr);
+
+    uint32_t fw       = kernel_get_fw_version();
+    uint32_t fw_major = (fw >> 24) & 0xFF;
+    uint32_t fw_minor = (fw >> 16) & 0xFF;
+    plugin_log("FW: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
+
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
     sigemptyset(&sa.sa_mask);
     for (int i = 0; i < 12; i++)
         sigaction(i, &sa, nullptr);
 
-    // ── patchShellCore ────────────────────────────────────────────────────────
-    // DISABLED FOR TEST — remettre pour prod
-    //if (!patchShellCore())
-    //    plugin_log("[SC_PATCH] echec patch SceShellCore");
-    //usleep(750000);
+    // patchShellCore pour accès /data du loader lui-même
+    if (!patchShellCore())
+        plugin_log("[SC] patchShellCore failed");
+    usleep(500000);
 
-    printf_notification("Prx-Loader [TCP] By @84Ciss");
+    printf_notification("Prx-Loader [ptrace] FW:%x.%02x     \nVer:1.17 By @84Ciss",
+                        fw_major, fw_minor);
 
-    // ── Main loop — poll comme l'Injector ────────────────────────────────────
+    // ── Poll loop ─────────────────────────────────────────────────────────────
     std::string tid;
     int bappid, last_bappid = -1;
 
@@ -249,41 +544,21 @@ int main()
 
                 GameInjectorConfig config = parse_injector_config();
 
-                // frame_delay depuis l'INI converti en secondes (60 frames = 1s)
-                int frame_delay = 300;
-                auto it_game = config.games.find(std::string(tid.c_str()));
-                if (it_game != config.games.end() && !it_game->second.empty())
-                    frame_delay = it_game->second[0].frame_delay;
+                // Section [default]
+                auto def = config.games.find("default");
+                if (def != config.games.end())
+                    inject_into_game(tid.c_str(), def->second);
 
-                int delay_sec = frame_delay / 60;
-                if (delay_sec < 1) delay_sec = 1;
+                // Section [TITLE_ID]
+                auto it = config.games.find(tid);
+                if (it != config.games.end())
+                    inject_into_game(tid.c_str(), it->second);
+                else if (def == config.games.end())
+                    plugin_log("No config for %s", tid.c_str());
 
-                // Attendre que eboot.bin soit réellement spawné
-                plugin_log("[TCP] Waiting for eboot.bin...");
-                pid_t game_pid = -1;
-                for (int i = 0; i < 40; i++) {  // max 20s
-                    usleep(500000);
-                    game_pid = find_pid("eboot.bin");
-                    if (game_pid > 0) {
-                        plugin_log("[TCP] eboot.bin pid=%d", game_pid);
-                        break;
-                    }
-                }
-
-                if (game_pid <= 0) {
-                    plugin_log("[TCP] Game process never spawned, skip");
-                    continue;
-                }
-
-                plugin_log("[TCP] frame_delay=%d → %ds avant injection", frame_delay, delay_sec);
-                printf_notification("Game: %s\nInject dans %ds...", tid.c_str(), delay_sec);
-                sleep(delay_sec);
-
-                send_all_payloads(tid.c_str(), config);
                 last_bappid = bappid;
             }
         }
-
         sleep(5);
     }
 
