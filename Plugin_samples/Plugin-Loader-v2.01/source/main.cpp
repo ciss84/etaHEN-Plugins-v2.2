@@ -462,13 +462,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
     sleep(delay_sec);
     int success_count = 0;
     if (kill(pid, 0) == 0) {
-        // Suspend propre via SCE (identique original — pas de lag après)
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        usleep(750000);
-
-        // ptrace uniquement pour l'injection shellcode
         if (pt_attach(pid) == 0) {
+            usleep(750000);
             if (jb_pid(pid) == 0) {
                 for (size_t idx = 0; idx < prx_list.size(); idx++) {
                     const auto &prx = prx_list[idx];
@@ -479,25 +474,22 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
 
                     if (idx + 1 < prx_list.size()) {
-                        pt_detach(pid);
-                        sceKernelPrepareToResumeProcess(pid);
-                        sceKernelResumeProcess(pid);
+                        sys_ptrace(PT_DETACH, pid, (caddr_t)1, SIGCONT);
                         sleep(3);
-                        sceKernelPrepareToSuspendProcess(pid);
-                        sceKernelSuspendProcess(pid);
-                        usleep(2500000);
                         if (pt_attach(pid) != 0) break;
+                        usleep(2500000);
                         if (jb_pid(pid) != 0) break;
                     }
                 }
             }
-            pt_detach(pid);
+            // Detach propre avec SIGCONT — game reprend sans lag
+            sys_ptrace(PT_DETACH, pid, (caddr_t)1, SIGCONT);
+        } else {
+            plugin_log("[INJ] pt_attach failed pid=%d errno=%d", pid, errno);
         }
-
-        // Resume propre via SCE
-        sceKernelPrepareToResumeProcess(pid);
-        sceKernelResumeProcess(pid);
-    } else { plugin_log("[INJ] process dead pid=%d", pid); }
+    } else {
+        plugin_log("[INJ] process dead pid=%d", pid);
+    }
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
     if (fakelib_wanted)
         printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
@@ -521,7 +513,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v2.01 + BACKPORK ===");
+    plugin_log("=== PLUGIN LOADER v1.17 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -537,7 +529,7 @@ int main()
     // if (!patchShellCore())
     //     plugin_log("[SC] patchShellCore failed");
     jb_pid(getpid());
-    usleep(750000);
+    usleep(500000);
     // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
