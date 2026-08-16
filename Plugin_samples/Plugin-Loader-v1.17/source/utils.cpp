@@ -85,7 +85,7 @@ GameInjectorConfig parse_injector_config()
                 else if (!current_tid.empty()) {
                     size_t colon = line.find(':');
                     std::string prx_file;
-                    int frame_delay = 60;
+                    int frame_delay = 300;  // défaut 300 frames = 5s
                     if (colon != std::string::npos) {
                         prx_file    = line.substr(0, colon);
                         frame_delay = atoi(line.substr(colon + 1).c_str());

@@ -215,9 +215,23 @@ int main()
                  tid.rfind("SCUS", 0) == 0))
             {
                 plugin_log("Game detected: %s (bappid=%d)", tid.c_str(), bappid);
-                printf_notification("Game detected: %s\\nInjecting in %ds...", tid.c_str(), just_started ? 1 : 10);
 
-                sleep(just_started ? 1 : 10);
+                GameInjectorConfig config = parse_injector_config();
+
+                // frame_delay depuis l'INI converti en secondes (60 frames = 1s)
+                // Ex: :60 = 1s  :300 = 5s  :600 = 10s  :1200 = 20s
+                // Défaut si pas de config = 300 frames (5s)
+                int frame_delay = 300;
+                auto it_game = config.games.find(std::string(tid.c_str()));
+                if (it_game != config.games.end() && !it_game->second.empty())
+                    frame_delay = it_game->second[0].frame_delay;
+
+                int delay_sec = frame_delay / 60;
+                if (delay_sec < 1) delay_sec = 1;
+
+                plugin_log("[TCP] frame_delay=%d → %ds avant injection", frame_delay, delay_sec);
+                printf_notification("Game: %s\nInject dans %ds...", tid.c_str(), delay_sec);
+                sleep(delay_sec);
 
                 // Vérifier que le jeu tourne encore
                 std::string tid2;
@@ -228,7 +242,6 @@ int main()
                     continue;
                 }
 
-                GameInjectorConfig config = parse_injector_config();
                 send_all_payloads(tid.c_str(), config);
                 last_bappid = bappid;
             }
