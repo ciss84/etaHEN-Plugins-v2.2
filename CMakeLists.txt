@@ -11,6 +11,7 @@ include_directories	(SYSTEM "${PROJECT_ROOT}/include")
 include_directories(SYSTEM "${PS5_PAYLOAD_SDK}")
 include_directories(SYSTEM "${PS5_PAYLOAD_SDK}/include")
 
+add_subdirectory(daemon)
 add_subdirectory(libhijacker)
 add_subdirectory(libNidResolver)
 add_subdirectory(libSelfDecryptor)
