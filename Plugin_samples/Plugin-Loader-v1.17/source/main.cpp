@@ -66,7 +66,7 @@ void sig_handler(int signo)
 //  Helpers: find SceSysCore PID
 // ─────────────────────────────────────────────────────────────────────────────
 
-static pid_t find_pid(const char *name)
+static pid_t __attribute__((unused)) find_pid(const char *name)
 {
     int      mib[4] = {1, 14, 8, 0};
     pid_t    mypid  = getpid();
@@ -408,7 +408,7 @@ static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_
 //  Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-static bool IsProcessRunning(pid_t pid)
+static bool __attribute__((unused)) IsProcessRunning(pid_t pid)
 {
     int bappid = 0;
     return (_sceApplicationGetAppId(pid, &bappid) >= 0);
