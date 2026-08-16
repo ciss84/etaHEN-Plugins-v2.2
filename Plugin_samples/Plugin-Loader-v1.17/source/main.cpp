@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <machine/reg.h>
 #include <stdarg.h>
+#include <sys/_iovec.h>
 #include <sys/event.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
