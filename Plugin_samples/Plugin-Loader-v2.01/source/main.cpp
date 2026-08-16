@@ -142,7 +142,7 @@ static int pt_ci(pid_t p,const void*b,intptr_t a,size_t l){
 static intptr_t pt_res(pid_t p,const char*n){
     intptr_t a=kernel_dynlib_resolve(p,0x1,n);return a?a:kernel_dynlib_resolve(p,0x2001,n);
 }
-static long pt_sc(pid_t pid,int sn,...){
+static long __attribute__((unused)) pt_sc(pid_t pid,int sn,...){
     intptr_t a=pt_res(pid,NID_SYSCALL);if(!a)return -1;a+=0xA;
     struct reg j,b;if(pt_gr(pid,&b))return -1;memcpy(&j,&b,sizeof(j));
     j.r_rip=a;j.r_rax=(uint64_t)sn;
@@ -158,10 +158,10 @@ static long pt_sc(pid_t pid,int sn,...){
     }
     pt_sr(pid,&b);return(long)j.r_rax;
 }
-static intptr_t pt_mmap(pid_t p,intptr_t a,size_t l,int pr,int f,int fd,off_t o){
+static intptr_t __attribute__((unused)) pt_mmap(pid_t p,intptr_t a,size_t l,int pr,int f,int fd,off_t o){
     return pt_sc(p,SYS_mmap,(uint64_t)a,(uint64_t)l,(uint64_t)pr,(uint64_t)f,(uint64_t)fd,(uint64_t)o);
 }
-static int pt_munmap(pid_t p,intptr_t a,size_t l){return(int)pt_sc(p,SYS_munmap,(uint64_t)a,(uint64_t)l);}
+static int __attribute__((unused)) pt_munmap(pid_t p,intptr_t a,size_t l){return(int)pt_sc(p,SYS_munmap,(uint64_t)a,(uint64_t)l);}
 static long pt_cont(pid_t pid,intptr_t addr,...){
     struct reg j,b;if(pt_gr(pid,&b))return -1;memcpy(&j,&b,sizeof(j));j.r_rip=addr;
     va_list ap;va_start(ap,addr);
@@ -184,21 +184,43 @@ static int jb_pid(pid_t pid){
     kernel_set_proc_rootdir(pid,rv);kernel_set_proc_jaildir(pid,rv);
     plugin_log("[JB] OK pid=%d",pid);return 0;
 }
-static long inject_prx(pid_t pid,const char*path){
-    if(access(path,R_OK)!=0)return -1;
-    intptr_t fn=pt_res(pid,NID_LOADMOD);if(!fn)return -1;
-    intptr_t rw=pt_mmap(pid,0,0x4000,PROT_READ|PROT_WRITE,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);
-    if(rw==(intptr_t)-1||rw==0)return -1;
-    long mod=-1;
-    do{
-        if(pt_ci(pid,path,rw,strlen(path)+1)<0)break;
-        uint8_t sc[sizeof(k_shellcode)];memcpy(sc,k_shellcode,sizeof(sc));memcpy(sc+SHELLCODE_FN_OFFSET,&fn,8);
-        if(pt_ci(pid,sc,rw+0x1000,sizeof(sc))<0)break;
-        if(kernel_mprotect(pid,rw+0x1000,0x1000,PROT_READ|PROT_WRITE|PROT_EXEC)!=0)break;
-        mod=pt_cont(pid,rw+0x1000,(uint64_t)rw,0ULL,0ULL,0ULL,0ULL,0ULL);
-        kernel_mprotect(pid,rw+0x1000,0x1000,PROT_READ|PROT_WRITE);
-    }while(0);
-    pt_munmap(pid,rw,0x4000);return mod;
+static long inject_prx(pid_t pid, const char *path) {
+    // Pas de pt_mmap (10000 PT_STEP trop perturbateur pendant le chargement)
+    // On utilise la stack du process comme buffer + kernel_mprotect pour RWX
+    if (access(path, R_OK) != 0) return -1;
+
+    intptr_t fn = pt_res(pid, NID_LOADMOD);
+    if (!fn) { plugin_log("[INJ] NID_LOADMOD not resolved"); return -1; }
+
+    // Lire RSP pour trouver la stack
+    struct reg regs;
+    if (pt_gr(pid, &regs)) return -1;
+
+    // Zone sur la stack : 2 pages sous RSP, alignees page
+    intptr_t sc_page   = (regs.r_rsp - 0x2000) & ~0xFFFLL;
+    intptr_t path_page = sc_page - 0x1000;
+
+    // Ecrire le path via ptrace IO
+    if (pt_ci(pid, path, path_page, strlen(path) + 1) < 0) return -1;
+
+    // Ecrire le shellcode via ptrace IO
+    uint8_t sc[sizeof(k_shellcode)];
+    memcpy(sc, k_shellcode, sizeof(sc));
+    memcpy(sc + SHELLCODE_FN_OFFSET, &fn, 8);
+    if (pt_ci(pid, sc, sc_page, sizeof(sc)) < 0) return -1;
+
+    // Rendre la page shellcode executable via kernel (pas de syscall dans le process)
+    if (kernel_mprotect(pid, sc_page, 0x1000, PROT_READ | PROT_WRITE | PROT_EXEC) != 0)
+        return -1;
+
+    // Executer via PT_CONTINUE + INT3 — zero PT_STEP
+    long mod = pt_cont(pid, sc_page,
+                       (uint64_t)path_page, 0ULL, 0ULL, 0ULL, 0ULL, 0ULL);
+
+    // Restaurer permissions stack
+    kernel_mprotect(pid, sc_page, 0x1000, PROT_READ | PROT_WRITE);
+    plugin_log("[INJ] modid=%d path=%s", (int32_t)mod, path);
+    return mod;
 }
 
 
