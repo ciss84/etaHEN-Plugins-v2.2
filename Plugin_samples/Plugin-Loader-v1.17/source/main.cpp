@@ -222,8 +222,6 @@ int main()
                 GameInjectorConfig config = parse_injector_config();
 
                 // frame_delay depuis l'INI converti en secondes (60 frames = 1s)
-                // Ex: :60 = 1s  :300 = 5s  :600 = 10s  :1200 = 20s
-                // Défaut si pas de config = 300 frames (5s)
                 int frame_delay = 300;
                 auto it_game = config.games.find(std::string(tid.c_str()));
                 if (it_game != config.games.end() && !it_game->second.empty())
@@ -232,17 +230,32 @@ int main()
                 int delay_sec = frame_delay / 60;
                 if (delay_sec < 1) delay_sec = 1;
 
+                // Attendre que le process game soit réellement spawné et en vie
+                // avant de démarrer le délai (évite injection avant que l'eboot démarre)
+                plugin_log("[TCP] Waiting for game process to spawn...");
+                pid_t game_pid = -1;
+                for (int i = 0; i < 60; i++) {  // max 30s
+                    usleep(500000);  // 500ms
+                    std::string tid2;
+                    int bappid2;
+                    if (!Get_Running_App_TID(tid2, bappid2) || bappid2 != bappid)
+                        break;  // jeu fermé avant même de démarrer
+                    // Chercher le PID réel du process eboot
+                    game_pid = find_pid("eboot.bin");
+                    if (game_pid > 0) {
+                        plugin_log("[TCP] Game process alive: pid=%d", game_pid);
+                        break;
+                    }
+                }
+
+                if (game_pid <= 0) {
+                    plugin_log("[TCP] Game process never spawned, skip");
+                    continue;
+                }
+
                 plugin_log("[TCP] frame_delay=%d → %ds avant injection", frame_delay, delay_sec);
                 printf_notification("Game: %s\nInject dans %ds...", tid.c_str(), delay_sec);
                 sleep(delay_sec);
-
-                // Vérifier que le jeu tourne encore
-                std::string tid2;
-                int bappid2;
-                if (!Get_Running_App_TID(tid2, bappid2) || bappid != bappid2) {
-                    plugin_log("Game closed before injection");
-                    continue;
-                }
 
                 send_all_payloads(tid.c_str(), config);
                 last_bappid = bappid;
