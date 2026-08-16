@@ -510,6 +510,21 @@ static void inject_into_game(pid_t pid, const char *title_id,
         usleep(750000);
 
         for (const auto &prx : prx_list) {
+            // Délai wall-clock avant injection (frame_delay/60 secondes)
+            // scePadReadState peut ne pas être appelé pendant le chargement
+            // → double garantie : sleep + comptage frames dans shellcode
+            int pre_delay = prx.frame_delay / 60;
+            if (pre_delay > 0) {
+                plugin_log("[PLT] Pre-delay %ds avant HookGame (frame_delay=%d)",
+                           pre_delay, prx.frame_delay);
+                sceKernelPrepareToResumeProcess(pid);
+                sceKernelResumeProcess(pid);
+                sleep(pre_delay);
+                sceKernelPrepareToSuspendProcess(pid);
+                sceKernelSuspendProcess(pid);
+                usleep(750000);
+            }
+
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
             uintptr_t stuff_addr = 0;
             if (HookGame(hijacker, text_base, prx.path.c_str(), false, prx.frame_delay, &stuff_addr)) {
