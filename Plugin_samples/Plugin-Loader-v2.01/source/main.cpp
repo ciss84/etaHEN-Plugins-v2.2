@@ -483,7 +483,9 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
 
                     if (idx + 1 < prx_list.size()) {
-                        sys_ptrace(PT_DETACH, pid, (caddr_t)1, SIGCONT);
+                        sys_ptrace(PT_DETACH, pid, (caddr_t)1, 0);
+                        usleep(100000);
+                        kill(pid, SIGCONT);
                         sleep(3);
                         if (pt_attach(pid) != 0) break;
                         usleep(2500000);
@@ -491,8 +493,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     }
                 }
             }
-            // Detach propre avec SIGCONT — game reprend sans lag
-            sys_ptrace(PT_DETACH, pid, (caddr_t)1, SIGCONT);
+            // Detach sans signal + kill SIGCONT explicite
+            sys_ptrace(PT_DETACH, pid, (caddr_t)1, 0);
+            usleep(100000);
+            kill(pid, SIGCONT);
         } else {
             plugin_log("[INJ] pt_attach failed pid=%d errno=%d", pid, errno);
         }
@@ -539,9 +543,8 @@ int main()
     //     plugin_log("[SC] patchShellCore failed");
     //jb_pid(getpid());
     //usleep(500000);
-    if (!jb_pid(getpid())) {
-        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
-    }
+    if (jb_pid(getpid()) != 0)
+        plugin_log("[JB] self jb failed");
     usleep(750000);
     // ─────────────────────────────────────────────────────────────────────
 
