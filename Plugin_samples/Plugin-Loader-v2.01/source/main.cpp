@@ -451,16 +451,17 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
         }
     }
-
+    
     // ── 2. Attente initialisation process ────────────────────────────────
     plugin_log("Waiting for process initialization...");
     int alive = 0;
     for (int i = 0; i < 10; i++) {
-        usleep(200000);
+        usleep(100000);
         if (IsProcessRunning(pid)) alive++;
     }
     plugin_log("Process alive: %d/10 checks", alive);
 
+    // ── 3. PLT Hook ───────────────────────────────────────────────────────
     // -- ptrace + jb_pid + inject
     // frame_delay en frames comme l'ancien INI (:60=1s :600=10s :1200=20s)
     // pt_attach = equivalent sceKernelSuspendProcess
@@ -470,28 +471,43 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("[INJ] delay=%ds pid=%d", delay_sec, pid);
     sleep(delay_sec);
     int success_count = 0;
-    if (kill(pid, 0) == 0 && pt_attach(pid) == 0) {
-        usleep(750000);  // laisser le process se stopper complètement (identique original)
-        if (jb_pid(pid) == 0) {
-            for (size_t idx = 0; idx < prx_list.size(); idx++) {
-                const auto &prx = prx_list[idx];
-                long ret = inject_prx(pid, prx.path.c_str());
-                int32_t rc = (int32_t)ret;
-                if (rc > 0) { success_count++; plugin_log("[INJ] OK modid=%d", rc); }
-                else if (rc == 0) { success_count++; }
-                else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
+    if (kill(pid, 0) == 0) {
+        // Suspend propre via SCE (identique original — pas de lag après)
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        usleep(750000);
 
-                if (idx + 1 < prx_list.size()) {
-                    pt_detach(pid);
-                    sleep(3);           // laisser le PRX se charger (identique original)
-                    if (pt_attach(pid) != 0) break;
-                    usleep(2500000);    // 2.5s après re-suspend (identique original)
-                    if (jb_pid(pid) != 0) break;
+        // ptrace uniquement pour l'injection shellcode
+        if (pt_attach(pid) == 0) {
+            if (jb_pid(pid) == 0) {
+                for (size_t idx = 0; idx < prx_list.size(); idx++) {
+                    const auto &prx = prx_list[idx];
+                    long ret = inject_prx(pid, prx.path.c_str());
+                    int32_t rc = (int32_t)ret;
+                    if (rc > 0) { success_count++; plugin_log("[INJ] OK modid=%d", rc); }
+                    else if (rc == 0) { success_count++; }
+                    else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
+
+                    if (idx + 1 < prx_list.size()) {
+                        pt_detach(pid);
+                        sceKernelPrepareToResumeProcess(pid);
+                        sceKernelResumeProcess(pid);
+                        sleep(3);
+                        sceKernelPrepareToSuspendProcess(pid);
+                        sceKernelSuspendProcess(pid);
+                        usleep(2500000);
+                        if (pt_attach(pid) != 0) break;
+                        if (jb_pid(pid) != 0) break;
+                    }
                 }
             }
+            pt_detach(pid);
         }
-        pt_detach(pid);
-    } else { plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno); }
+
+        // Resume propre via SCE
+        sceKernelPrepareToResumeProcess(pid);
+        sceKernelResumeProcess(pid);
+    } else { plugin_log("[INJ] process dead pid=%d", pid); }
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
     if (fakelib_wanted)
         printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
@@ -515,7 +531,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PLUGIN LOADER v2.02 + FAKELIB ===");
+    plugin_log("=== PLUGIN LOADER v2.01 + BACKPORK ===");
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -530,12 +546,8 @@ int main()
     // patchShellCore DESACTIVE pour test (jb_pid suffit)
     // if (!patchShellCore())
     //     plugin_log("[SC] patchShellCore failed");
-    //jb_pid(getpid());
-    //usleep(500000);
-    if (!jb_pid(getpid())) {
-        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
-    }
-    usleep(750000);    
+    jb_pid(getpid());
+    usleep(750000);
     // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
