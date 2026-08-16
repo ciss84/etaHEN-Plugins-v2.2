@@ -522,7 +522,11 @@ int main()
     // patchShellCore DESACTIVE pour test (jb_pid suffit)
     // if (!patchShellCore())
     //     plugin_log("[SC] patchShellCore failed");
-    jb_pid(getpid());
+    //jb_pid(getpid());
+    //usleep(500000);
+    if (!jb_pid(getpid())) {
+        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
+    }
     usleep(750000);
     // ─────────────────────────────────────────────────────────────────────
 
