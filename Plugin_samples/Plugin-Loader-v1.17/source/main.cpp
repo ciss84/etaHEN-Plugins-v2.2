@@ -203,7 +203,6 @@ int main()
     // ── Main loop — poll comme l'Injector ────────────────────────────────────
     std::string tid;
     int bappid, last_bappid = -1;
-    bool just_started = true;
 
     while (true)
     {
@@ -238,7 +237,6 @@ int main()
                 int bappid2;
                 if (!Get_Running_App_TID(tid2, bappid2) || bappid != bappid2) {
                     plugin_log("Game closed before injection");
-                    just_started = false;
                     continue;
                 }
 
@@ -247,7 +245,6 @@ int main()
             }
         }
 
-        just_started = false;
         sleep(5);
     }
 
