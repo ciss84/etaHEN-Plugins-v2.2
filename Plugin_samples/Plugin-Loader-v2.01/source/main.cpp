@@ -451,7 +451,16 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
         }
     }
+    // ── 2. Attente initialisation process ────────────────────────────────
+    plugin_log("Waiting for process initialization...");
+    int alive = 0;
+    for (int i = 0; i < 10; i++) {
+        usleep(100000);
+        if (IsProcessRunning(pid)) alive++;
+    }
+    plugin_log("Process alive: %d/10 checks", alive);
 
+    // ── 3. PLT Hook ───────────────────────────────────────────────────────
     // -- ptrace + jb_pid + inject
     // frame_delay en frames comme l'ancien INI (:60=1s :600=10s :1200=20s)
     // pt_attach = equivalent sceKernelSuspendProcess
@@ -528,8 +537,12 @@ int main()
     // patchShellCore DESACTIVE pour test (jb_pid suffit)
     // if (!patchShellCore())
     //     plugin_log("[SC] patchShellCore failed");
-    jb_pid(getpid());
-    usleep(500000);
+    //jb_pid(getpid());
+    //usleep(500000);
+    if (!jb_pid(getpid())) {
+        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
+    }
+    usleep(750000);
     // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
@@ -562,7 +575,7 @@ int main()
     }
 
     printf_notification("Prx-Loader Ver:2.01                       \nBy @84Ciss  FW: %x.%02x", fw_major, fw_minor);
-    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:1.17 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:2.01 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
