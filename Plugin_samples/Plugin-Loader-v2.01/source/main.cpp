@@ -468,11 +468,25 @@ static void inject_into_game(pid_t pid, const char *title_id,
     sleep(delay_sec);
     int success_count = 0;
     if (kill(pid, 0) == 0 && pt_attach(pid) == 0) { 
-        if (jb_pid(pid) == 0) {        
+        if (jb_pid(pid) == 0) {
+            sceKernelPrepareToSuspendProcess(pid);
+            sceKernelSuspendProcess(pid);
+            usleep(750000);  
             for (const auto &prx : prx_list) {
                 long ret = inject_prx(pid, prx.path.c_str());
                 int32_t rc = (int32_t)ret;
-                if (rc > 0) { success_count++; plugin_log("[INJ] OK modid=%d", rc); }
+                if (rc > 0) { 
+                success_count++;
+                sceKernelPrepareToResumeProcess(pid);
+                sceKernelResumeProcess(pid);                 
+                // Attends que le PRX se charge (~2-3 secondes)
+                sleep(3);
+               if (&prx != &prx_list.back()) {
+                    sceKernelPrepareToSuspendProcess(pid);
+                    sceKernelSuspendProcess(pid);
+                    usleep(2500000);
+                }
+                plugin_log("[INJ] OK modid=%d", rc); }
                 else if (rc == 0) { success_count++; }
                 else { plugin_log("[INJ] FAILED 0x%08x %s",(uint32_t)rc,prx.path.c_str()); }
             }
@@ -481,6 +495,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
     } else { 
       plugin_log("[INJ] attach failed pid=%d errno=%d", pid, errno);
     }   
+
+    // Final resume
+    usleep(500000);
+    sceKernelPrepareToResumeProcess(pid);
+    sceKernelResumeProcess(pid);
     
     plugin_log("[INJ] %d/%zu PRX injected", success_count, prx_list.size());
     
