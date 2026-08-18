@@ -472,20 +472,20 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
-    if (!patch_shellcore_for_data()) {
-       plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
-    }
-    usleep(750000);
-    // ─────────────────────────────────────────────────────────────────────
-        
-    // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
-    // TEST: variante mount (nullfs /user/data -> /data), voir patch_shellcore.hpp
-    // Rollback -> remettre: if (!patch_shellcore_for_data()) { ... }
-    if (!patch_shellcore_for_data_via_mount()) {
-        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
-    }
-    usleep(750000);
-    // ─────────────────────────────────────────────────────────────────────
+    // [DESACTIVE] patch_shellcore_for_data() — remplace par jb_pid()/Hijacker::jailbreak()
+    // Le sandbox escape se fait maintenant via fd_rdir/fd_jdir = root_vnode sur chaque game_pid.
+    // Reactiver ici si besoin de couvrir un process qui n'est pas capture par jb_pid.
+    //
+    // if (!patch_shellcore_for_data()) {
+    //    plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    // }
+    // usleep(750000);
+    //
+    // [DESACTIVE] patch_shellcore_for_data_via_mount() — idem, plus utilise
+    // if (!patch_shellcore_for_data_via_mount()) {
+    //     plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
+    // }
+    // usleep(750000);
 
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
