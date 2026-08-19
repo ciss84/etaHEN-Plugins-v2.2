@@ -92,25 +92,6 @@ static pid_t find_pid(const char *name)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Sandbox escape / privilege escalation via Hijacker::jailbreak()
-//  Applique : uid/ruid/svuid/gid/rgid=0, ngroups=0, authid=0x4801000000000013,
-//             cr_sceCaps[0/1]=-1, cr_sceAttr[0]=0x80, fd_rdir+fd_jdir=root_vnode
-//  Source verifiee : libhijacker/source/hijacker.cpp (offsets ucred confirmes)
-// ─────────────────────────────────────────────────────────────────────────────
-
-static bool jb_pid(pid_t pid, bool escape_sandbox)
-{
-    auto hj = Hijacker::getHijacker(pid);
-    if (!hj) {
-        plugin_log("[JB] getHijacker(%d) FAIL", (int)pid);
-        return false;
-    }
-    hj->jailbreak(escape_sandbox);
-    plugin_log("[JB] jailbreak(escape=%d) OK pid=%d", (int)escape_sandbox, (int)pid);
-    return true;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  fakelib / unionfs helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -337,11 +318,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
-    // ── 0. Sandbox escape / privileges (uid0 + authid + caps + fd_rdir/fd_jdir)
-    if (!jb_pid(pid, true)) {
-        plugin_log("[JB] echec jailbreak pid %d, on continue quand meme", (int)pid);
-    }
-
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
@@ -472,20 +448,20 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
-    // [DESACTIVE] patch_shellcore_for_data() — remplace par jb_pid()/Hijacker::jailbreak()
-    // Le sandbox escape se fait maintenant via fd_rdir/fd_jdir = root_vnode sur chaque game_pid.
-    // Reactiver ici si besoin de couvrir un process qui n'est pas capture par jb_pid.
-    //
-    // if (!patch_shellcore_for_data()) {
-    //    plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
-    // }
-    // usleep(750000);
-    //
-    // [DESACTIVE] patch_shellcore_for_data_via_mount() — idem, plus utilise
-    // if (!patch_shellcore_for_data_via_mount()) {
-    //     plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
-    // }
-    // usleep(750000);
+    if (!patch_shellcore_for_data()) {
+       plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    }
+    usleep(750000);
+    // ─────────────────────────────────────────────────────────────────────
+        
+    // ── SceShellCore /data sandbox patch (sans etaHEN) ──────────────────────
+    // TEST: variante mount (nullfs /user/data -> /data), voir patch_shellcore.hpp
+    // Rollback -> remettre: if (!patch_shellcore_for_data()) { ... }
+    if (!patch_shellcore_for_data_via_mount()) {
+        plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
+    }
+    usleep(750000);
+    // ─────────────────────────────────────────────────────────────────────
 
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
@@ -562,10 +538,6 @@ int main()
 
             if (it == config.games.end()) {
                 plugin_log("No PLT config for %s - fakelib only", title_id);
-
-                if (!jb_pid(child_pid, true)) {
-                    plugin_log("[JB] echec jailbreak pid %d (fakelib only)", (int)child_pid);
-                }
 
                 char sid[32] = {};
                 char *fml = nullptr;
