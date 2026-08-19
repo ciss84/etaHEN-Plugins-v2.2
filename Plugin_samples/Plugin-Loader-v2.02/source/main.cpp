@@ -571,7 +571,7 @@ int main()
                 {
                     auto hj = Hijacker::getHijacker(child_pid);
                     if (hj) {
-                        plugin_log("[JB] game_pid=%d - pas de jailbreak (sandbox intact)", (int)child_pid);
+                        plugin_log("[JB] game_pid=%d - sandbox intact, pas de jailbreak", (int)child_pid);
                     }
                 }
 
