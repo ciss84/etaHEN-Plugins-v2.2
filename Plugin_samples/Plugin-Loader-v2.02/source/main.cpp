@@ -448,16 +448,20 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
-    // [DESACTIVE] patch_shellcore_for_data_via_mount() — plus utilise
-    // if (!patch_shellcore_for_data_via_mount()) {
-    //     plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
-    // }
-    // usleep(750000);
-
-    /*if (!patch_shellcore_for_data()) {
-        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    // patch_shellcore_for_data() uniquement si etaHEN n'est pas la
+    // etaHEN cree /download0/etahen_jailbreak quand il a deja patche shellcore
+    {
+        struct stat eta_st{};
+        bool eta_present = (stat("/download0/etahen_jailbreak", &eta_st) == 0);
+        if (eta_present) {
+            plugin_log("[SC_PATCH] etaHEN detecte -> patch shellcore skippe");
+        } else {
+            if (!patch_shellcore_for_data()) {
+                plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+            }
+            usleep(750000);
+        }
     }
-    usleep(750000);*/
 
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
