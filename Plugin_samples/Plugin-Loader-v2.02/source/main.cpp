@@ -92,25 +92,6 @@ static pid_t find_pid(const char *name)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Sandbox escape / privilege escalation via Hijacker::jailbreak()
-//  Applique : uid/ruid/svuid/gid/rgid=0, ngroups=0, authid=0x4801000000000013,
-//             cr_sceCaps[0/1]=-1, cr_sceAttr[0]=0x80, fd_rdir+fd_jdir=root_vnode
-//  Source verifiee : libhijacker/source/hijacker.cpp (offsets ucred confirmes)
-// ─────────────────────────────────────────────────────────────────────────────
-
-static bool jb_pid(pid_t pid, bool escape_sandbox)
-{
-    auto hj = Hijacker::getHijacker(pid);
-    if (!hj) {
-        plugin_log("[JB] getHijacker(%d) FAIL", (int)pid);
-        return false;
-    }
-    hj->jailbreak(escape_sandbox);
-    plugin_log("[JB] jailbreak(escape=%d) OK pid=%d", (int)escape_sandbox, (int)pid);
-    return true;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  fakelib / unionfs helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
