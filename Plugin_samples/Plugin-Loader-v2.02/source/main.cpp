@@ -454,10 +454,10 @@ int main()
     // }
     // usleep(750000);
 
-    if (!patch_shellcore_for_data()) {
+    /*if (!patch_shellcore_for_data()) {
         plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
     }
-    usleep(750000);
+    usleep(750000);*/
 
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
