@@ -19,26 +19,15 @@ jobs:
   payload-build:
     runs-on: ubuntu-latest
     steps:
-    
-    - name: Get Latest SDK Release Info
-      id: sdk-release
-      uses: actions/github-script@v6
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const release = await github.rest.repos.getLatestRelease({
-            owner: 'ps5-payload-dev',
-            repo: 'sdk'
-          });
-          core.setOutput('download_url', release.data.assets.find(asset => asset.name.endsWith('.zip')).browser_download_url);
 
-    - name: Download Latest SDK
+    - name: Download SDK v0.42
       run: |
-        curl -L "${{ steps.sdk-release.outputs.download_url }}" -o ps5-sdk.zip
+        echo "SDK release: v0.42"
+        curl -L "https://github.com/ps5-payload-dev/sdk/releases/download/v0.42/ps5-payload-sdk.zip" -o ps5-sdk.zip
         mkdir -p ${{ runner.tool_cache }}/ps5-payload-sdk
         unzip ps5-sdk.zip -d ${{ runner.tool_cache }}/ps5-payload-sdk
         echo PS5_PAYLOAD_SDK=${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk >> $GITHUB_ENV
-        chmod 0755 -R ${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk 
+        chmod 0755 -R ${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk
 
     - name: Checkout Payload
       uses: actions/checkout@v3
