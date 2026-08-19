@@ -337,11 +337,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
-    // ── 0. Sandbox escape / privileges (uid0 + authid + caps + fd_rdir/fd_jdir)
-    if (!jb_pid(pid, true)) {
-        plugin_log("[JB] echec jailbreak pid %d, on continue quand meme", (int)pid);
-    }
-
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
@@ -472,6 +467,19 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
+    // ── Jailbreak self (loader) — uid0 + authid + caps + escape sandbox ──
+    // Necessaire sans etaHEN : donne les droits ptrace et acces /data
+    {
+        auto self_hj = Hijacker::getHijacker(getpid());
+        if (self_hj) {
+            self_hj->jailbreak(true);
+            plugin_log("[JB] self jailbreak OK (pid=%d)", (int)getpid());
+        } else {
+            plugin_log("[JB] self jailbreak FAIL — etaHEN absent et pas de droits ?");
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // [DESACTIVE] patch_shellcore_for_data() — remplace par jb_pid()/Hijacker::jailbreak()
     // Le sandbox escape se fait maintenant via fd_rdir/fd_jdir = root_vnode sur chaque game_pid.
     //
@@ -562,10 +570,6 @@ int main()
             if (it == config.games.end()) {
                 plugin_log("No PLT config for %s - fakelib only", title_id);
 
-                if (!jb_pid(child_pid, true)) {
-                    plugin_log("[JB] echec jailbreak pid %d (fakelib only)", (int)child_pid);
-                }
-
                 char sid[32] = {};
                 char *fml = nullptr;
                 auto fml_cfg = config.fakelib_enabled.find(std::string(title_id));
@@ -580,6 +584,14 @@ int main()
                         usleep(50000);
                     if (stat(fakelib_check, &st2) == 0)
                         fml = try_mount_fakelib(title_id, sid);
+                }
+
+                // Jailbreak apres fakelib mount — process pret a ce stade
+                {
+                    auto hj = Hijacker::getHijacker(child_pid);
+                    if (hj) {
+                        plugin_log("[JB] game_pid=%d - pas de jailbreak (sandbox intact)", (int)child_pid);
+                    }
                 }
 
                 pid_t game_pid = child_pid;
