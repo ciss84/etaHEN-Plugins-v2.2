@@ -448,32 +448,16 @@ int main()
     plugin_log("FW detected: 0x%08x (%x.%02x)", fw, fw_major, fw_minor);
     // ─────────────────────────────────────────────────────────────────────
 
-    // ── Jailbreak self (loader) — uid0 + authid + caps + escape sandbox ──
-    // Necessaire sans etaHEN : donne les droits ptrace et acces /data
-    {
-        auto self_hj = Hijacker::getHijacker(getpid());
-        if (self_hj) {
-            self_hj->jailbreak(true);
-            plugin_log("[JB] self jailbreak OK (pid=%d)", (int)getpid());
-        } else {
-            plugin_log("[JB] self jailbreak FAIL — etaHEN absent et pas de droits ?");
-        }
-    }
-    // ─────────────────────────────────────────────────────────────────────
-
-    // [DESACTIVE] patch_shellcore_for_data() — remplace par jb_pid()/Hijacker::jailbreak()
-    // Le sandbox escape se fait maintenant via fd_rdir/fd_jdir = root_vnode sur chaque game_pid.
-    //
-    // if (!patch_shellcore_for_data()) {
-    //    plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
-    // }
-    // usleep(750000);
-    //
-    // [DESACTIVE] patch_shellcore_for_data_via_mount() — idem, plus utilise
+    // [DESACTIVE] patch_shellcore_for_data_via_mount() — plus utilise
     // if (!patch_shellcore_for_data_via_mount()) {
     //     plugin_log("[SC_PATCH_TEST] echec mount /user/data -> /data");
     // }
     // usleep(750000);
+
+    if (!patch_shellcore_for_data()) {
+        plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
+    }
+    usleep(750000);
 
     struct sigaction sa{};
     sa.sa_handler = sig_handler;
@@ -565,14 +549,6 @@ int main()
                         usleep(50000);
                     if (stat(fakelib_check, &st2) == 0)
                         fml = try_mount_fakelib(title_id, sid);
-                }
-
-                // Jailbreak apres fakelib mount — process pret a ce stade
-                {
-                    auto hj = Hijacker::getHijacker(child_pid);
-                    if (hj) {
-                        plugin_log("[JB] game_pid=%d - sandbox intact, pas de jailbreak", (int)child_pid);
-                    }
                 }
 
                 pid_t game_pid = child_pid;
