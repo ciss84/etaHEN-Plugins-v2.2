@@ -137,6 +137,20 @@ GameInjectorConfig parse_injector_config()
                                    current_tid.c_str(), enabled ? "true" : "false");
                     }
                 }
+                // Clé delay = X  (délai en secondes avant injection ptrace)
+                else if (!current_tid.empty() && line.find("delay") == 0) {
+                    size_t eq = line.find('=');
+                    if (eq != std::string::npos) {
+                        std::string val = line.substr(eq + 1);
+                        size_t vs = val.find_first_not_of(" \t");
+                        if (vs != std::string::npos) val = val.substr(vs);
+                        int secs = atoi(val.c_str());
+                        if (secs < 1) secs = 1;
+                        config.inject_delay_ms[current_tid] = secs * 1000;
+                        plugin_log("Config: [%s] delay = %ds (%dms)",
+                                   current_tid.c_str(), secs, secs * 1000);
+                    }
+                }
                 // Ligne PRX (format: fichier.prx ou fichier.prx:delay)
                 else if (!current_tid.empty()) {
                     size_t colon_pos = line.find(':');

@@ -32,12 +32,13 @@
 
 struct PRXConfig {
     std::string path;
-    int frame_delay;  // conservé pour compatibilité format INI (non utilisé en ptrace mode)
+    int frame_delay;    // conservé pour compatibilité format INI (ignoré en ptrace)
 };
 
 struct GameInjectorConfig {
     std::map<std::string, std::vector<PRXConfig>> games;
-    std::map<std::string, bool> fakelib_enabled;
+    std::map<std::string, bool>                   fakelib_enabled;
+    std::map<std::string, int>                    inject_delay_ms; // clé INI: delay=X (secondes)
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

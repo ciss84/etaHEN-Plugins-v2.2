@@ -153,6 +153,18 @@ static int sys_ptrace(int req, pid_t pid, caddr_t addr, int data)
     return ret;
 }
 
+// waitpid bloquant — attend indéfiniment, utilisé dans pt_step et pt_call
+// (même comportement que le ploader original)
+static int pt_wait(pid_t pid, int *status)
+{
+    int st = 0;
+    if (!status) status = &st;
+    pid_t res = waitpid(pid, status, 0); // bloquant, pas de timeout
+    return (res == pid) ? 0 : -1;
+}
+
+// waitpid avec timeout — uniquement pour pt_attach (où on veut détecter
+// rapidement si le process n'existe pas encore)
 static int waitpid_timeout(pid_t pid, int *status, int ms)
 {
     for (int i = 0; i < ms / 10; i++) {
@@ -236,9 +248,10 @@ static long pt_syscall(pid_t pid, int sysno,
     if (pt_setregs(pid, &jmp)) return -1;
 
     // PT_STEP jusqu'au retour du syscall (RSP revenu à sa valeur initiale)
-    for (int i = 0; i < 10000; i++) {
+    // Bloquant comme le ploader — pas de timeout artificiel
+    for (;;) {
         if (sys_ptrace(PT_STEP, pid, (caddr_t)1, 0) ||
-            waitpid_timeout(pid, nullptr, 1000) <= 0)
+            pt_wait(pid, nullptr))
             return -1;
         if (pt_getregs(pid, &jmp)) return -1;
         if (jmp.r_rsp > bak.r_rsp) break;
@@ -277,8 +290,10 @@ static long pt_call(pid_t pid, intptr_t fn,
 
     sys_ptrace(PT_CONTINUE, pid, (caddr_t)1, 0);
 
+    // Bloquant — sceKernelLoadStartModule peut prendre plusieurs secondes
+    // selon la taille du PRX et l'état d'initialisation du jeu
     int status = 0;
-    if (waitpid_timeout(pid, &status, 5000) <= 0 ||
+    if (pt_wait(pid, &status) ||
         !WIFSTOPPED(status) || WSTOPSIG(status) != SIGTRAP)
     {
         pt_setregs(pid, &bak);
@@ -704,14 +719,27 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
     }
 
-    // ── ② Attente init process (dynld charge libkernel + autres sprx) ─────
-    plugin_log("[PT] Attente init process (~2s pour dynld)...");
-    int alive = 0;
-    for (int i = 0; i < 20; i++) {
-        usleep(100000); // 100ms × 20 = 2s
-        if (IsProcessRunning(pid)) alive++;
+    // ── ② Attente avant injection — le jeu doit être dans sa boucle principale
+    //  Par défaut 10s. Configurable dans l'INI : delay=X  (X en secondes)
+    //  Règle : mettre la même valeur que le temps entre "lancement" et "dans le jeu"
+    //  ex. delay=5  pour un jeu rapide, delay=20 pour un jeu lent à charger.
+    {
+        auto it_delay = config.inject_delay_ms.find(std::string(title_id));
+        int delay_ms  = (it_delay != config.inject_delay_ms.end())
+                        ? it_delay->second
+                        : 10000; // défaut : 10 secondes
+
+        plugin_log("[PT] Attente injection: %dms (configurable via delay= dans l'INI)",
+                   delay_ms);
+
+        int steps = delay_ms / 100;
+        int alive = 0;
+        for (int i = 0; i < steps; i++) {
+            usleep(100000); // 100ms par step
+            if (IsProcessRunning(pid)) alive++;
+        }
+        plugin_log("[PT] Process vivant: %d/%d checks", alive, steps);
     }
-    plugin_log("[PT] Process vivant: %d/20 checks", alive);
 
     // ── ③ jb_pid loader (accès /data depuis le loader lui-même) ──────────
     {
@@ -853,7 +881,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x      \nVer:3.00 By @84Ciss",
+    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.00 By @84Ciss",
                         fw_major, fw_minor);
     plugin_log("Surveillance SceSysCore.elf (pid %d)...", syscore_pid);
 
