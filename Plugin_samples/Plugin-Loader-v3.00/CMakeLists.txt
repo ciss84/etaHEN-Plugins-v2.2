@@ -1,0 +1,111 @@
+###################################################################################################
+# Plugin-Loader v3.00 — by @84Ciss
+# Injection ptrace (ploader) + kqueue detection + fakelib + multi-PRX
+# ScePad retiré du link (PLT hook scePadReadState supprimé)
+###################################################################################################
+
+cmake_minimum_required (VERSION 3.20)
+
+set(basename "Plugin-Loader-v3.00")
+project(${basename} C CXX)
+
+set(PLUGIN_TITLE_ID "PLUG00300")
+set(PLUGIN_VERSION  "3.00")
+
+set(CMAKE_C_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS ON)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 20)
+
+if (NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(IS_SUBPROJECT TRUE)
+else()
+    set(IS_SUBPROJECT FALSE)
+endif()
+
+message("IS_SUBPROJECT: ${IS_SUBPROJECT}")
+
+set(D_CWD "${CMAKE_CURRENT_SOURCE_DIR}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${D_CWD}/../bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${D_CWD}/bin)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${D_CWD}/bin)
+
+add_executable(${PROJECT_NAME})
+set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.elf")
+
+if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "[Cc]lang")
+    set(IS_CLANG 1)
+else()
+    message(FATAL_ERROR "${PROJECT_NAME} doit être compilé avec clang! CompilerID: ${CMAKE_CXX_COMPILER_ID}")
+endif()
+
+target_compile_options(${PROJECT_NAME} PUBLIC
+    $<$<COMPILE_LANGUAGE:C>:${C_DEFS} ${C_FLAGS}>
+    $<$<COMPILE_LANGUAGE:CXX>:${CXX_DEFS} ${CXX_FLAGS}>
+    $<$<COMPILE_LANGUAGE:ASM>:${ASM_FLAGS}>
+)
+
+message("========== build: ${PROJECT_NAME} ==========")
+set(D_SRC ${D_CWD}/source)
+
+include_directories(SYSTEM "${D_SRC}/../../../libelfloader/source/")
+include_directories(SYSTEM "${PS5_PAYLOAD_SDK}")
+include_directories(SYSTEM "${PS5_PAYLOAD_SDK}/include")
+
+# On ne prend que source/*.c et source/*.cpp (shellcode/ plus utilisé)
+file(GLOB SrcFiles
+    ${D_SRC}/*.c
+    ${D_SRC}/*.cpp
+    ${D_SRC}/*.h
+    ${D_SRC}/*.hpp
+    ${D_SRC}/../../../extern/pfd_sfo_tools/sfopatcher/src/*.c
+    ${D_SRC}/../../../extern/pfd_sfo_tools/sfopatcher/src/*.h
+    ${D_SRC}/../../../extern/tiny-json/*.c
+    ${D_SRC}/../../../extern/tiny-json/*.h
+    ${D_SRC}/../../../extern/mxml/*.c
+    ${D_SRC}/../../../extern/mxml/*.h
+)
+
+set(CMAKE_C_FLAGS   "--target=x86_64-sie-ps5 -DPPR -DPS5 -DPS5_FW_VERSION=${V_FW} ")
+set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -Wno-keyword-macro -fPIC -fPIE -march=znver2 -Wall -Werror -fstack-protector-all")
+set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -DDEBUG -gfull -gdwarf-2 -O0 -pedantic -pedantic-errors")
+set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -O0")
+
+add_custom_command(TARGET ${basename}
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf"
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf.bak"
+    COMMAND python3 "${CMAKE_SOURCE_DIR}/lib/make_plugin.py"
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf"
+        "${PLUGIN_TITLE_ID}" "${PLUGIN_VERSION}"
+    COMMAND ${CMAKE_COMMAND} -E rename
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf.bak"
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${basename}.elf"
+    COMMENT "Finishing Plugin"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+
+target_sources(${PROJECT_NAME} PRIVATE ${SrcFiles})
+target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../include")
+target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../shared/include")
+target_link_directories(${PROJECT_NAME} PUBLIC "${PROJECT_ROOT}/lib")
+
+# ScePad retiré — plus de PLT hook sur scePadReadState
+target_link_libraries(${PROJECT_NAME} PUBLIC
+    hijacker
+    SceLibcInternal
+    SceSystemService
+    SceNet
+    SceSysmodule
+    SceUserService
+    SceNetCtl
+    SceSysCore
+    SceVideoOut
+    kernel_sys
+    SceAppInstUtil
+    elfloader
+)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
