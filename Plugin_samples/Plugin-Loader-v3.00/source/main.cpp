@@ -719,23 +719,21 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
     }
 
-    // ── ② Attente avant injection — le jeu doit être dans sa boucle principale
-    //  Par défaut 10s. Configurable dans l'INI : delay=X  (X en secondes)
-    //  Règle : mettre la même valeur que le temps entre "lancement" et "dans le jeu"
-    //  ex. delay=5  pour un jeu rapide, delay=20 pour un jeu lent à charger.
+    // ── ② Attente avant injection — délai défini dans l'INI après ':'
+    //  ex: prx/BeachMenu.prx:10000  → 10 secondes
+    //  On prend le MAX des delay_ms de tous les PRX de ce titre.
+    //  Défaut si non spécifié : 10000ms (10s)
     {
-        auto it_delay = config.inject_delay_ms.find(std::string(title_id));
-        int delay_ms  = (it_delay != config.inject_delay_ms.end())
-                        ? it_delay->second
-                        : 10000; // défaut : 10 secondes
+        int delay_ms = 10000;
+        for (const auto &prx : prx_list)
+            delay_ms = std::max(delay_ms, prx.delay_ms);
 
-        plugin_log("[PT] Attente injection: %dms (configurable via delay= dans l'INI)",
-                   delay_ms);
+        plugin_log("[PT] Attente avant injection: %dms (valeur ':' dans l'INI)", delay_ms);
 
         int steps = delay_ms / 100;
         int alive = 0;
         for (int i = 0; i < steps; i++) {
-            usleep(100000); // 100ms par step
+            usleep(100000);
             if (IsProcessRunning(pid)) alive++;
         }
         plugin_log("[PT] Process vivant: %d/%d checks", alive, steps);

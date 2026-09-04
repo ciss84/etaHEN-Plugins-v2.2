@@ -65,8 +65,8 @@ bool Is_Game_Running(int &BigAppid, const char *title_id)
 //
 //  Format :
 //    [CUSAXXXXX]
-//    monplugin.prx:60        ; 60 = frame_delay (ignoré en mode ptrace)
-//    autreplugin.prx         ; frame_delay par défaut = 60
+//    monplugin.prx:60        ; 10000 = 10 secondes par défaut
+//    autreplugin.prx         ; délai par défaut = 10000ms
 //    fakelib = false         ; désactiver fakelib pour ce titre (PPSA seulement)
 //
 //    [PPSAXXXXX]
@@ -137,29 +137,18 @@ GameInjectorConfig parse_injector_config()
                                    current_tid.c_str(), enabled ? "true" : "false");
                     }
                 }
-                // Clé delay = X  (délai en secondes avant injection ptrace)
-                else if (!current_tid.empty() && line.find("delay") == 0) {
-                    size_t eq = line.find('=');
-                    if (eq != std::string::npos) {
-                        std::string val = line.substr(eq + 1);
-                        size_t vs = val.find_first_not_of(" \t");
-                        if (vs != std::string::npos) val = val.substr(vs);
-                        int secs = atoi(val.c_str());
-                        if (secs < 1) secs = 1;
-                        config.inject_delay_ms[current_tid] = secs * 1000;
-                        plugin_log("Config: [%s] delay = %ds (%dms)",
-                                   current_tid.c_str(), secs, secs * 1000);
-                    }
-                }
-                // Ligne PRX (format: fichier.prx ou fichier.prx:delay)
+                // Ligne PRX — format: fichier.prx  ou  fichier.prx:delay_ms
+                // La valeur après ':' est le délai en millisecondes avant injection
+                // ex: prx/BeachMenu.prx:10000  → attendre 10 secondes
                 else if (!current_tid.empty()) {
                     size_t colon_pos = line.find(':');
                     std::string prx_file;
-                    int frame_delay = 60;
+                    int delay_ms = 10000; // défaut : 10 secondes
 
                     if (colon_pos != std::string::npos) {
-                        prx_file    = line.substr(0, colon_pos);
-                        frame_delay = atoi(line.substr(colon_pos + 1).c_str());
+                        prx_file = line.substr(0, colon_pos);
+                        int val  = atoi(line.substr(colon_pos + 1).c_str());
+                        if (val > 0) delay_ms = val;
                     } else {
                         prx_file = line;
                     }
@@ -167,12 +156,12 @@ GameInjectorConfig parse_injector_config()
                     std::string full_path = "/data/PluginLoader/" + prx_file;
 
                     PRXConfig prx;
-                    prx.path        = full_path;
-                    prx.frame_delay = frame_delay; // conservé, non utilisé en ptrace
+                    prx.path     = full_path;
+                    prx.delay_ms = delay_ms;
 
                     config.games[current_tid].push_back(prx);
-                    plugin_log("Config: [%s] → %s",
-                               current_tid.c_str(), full_path.c_str());
+                    plugin_log("Config: [%s] → %s (delay %dms)",
+                               current_tid.c_str(), full_path.c_str(), delay_ms);
                 }
             }
 
