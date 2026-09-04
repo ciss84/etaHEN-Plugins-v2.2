@@ -725,9 +725,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
     //  Si handle < 0 → on attend delay_ms et on réessaie (max 60 tentatives = ~1 min).
     //  Dès que handle > 0 → PRX chargé, on passe au suivant.
     {
-        int delay_ms = 10000; // défaut entre retry
+        // Délai entre retry = valeur ':' dans l'INI (en ms), max de tous les PRX
+        // Défaut si non spécifié : 1000ms
+        int delay_ms = 1000;
         for (const auto &prx : prx_list)
-            delay_ms = std::max(delay_ms, prx.delay_ms);
+            if (prx.delay_ms > delay_ms)
+                delay_ms = prx.delay_ms;
 
         plugin_log("[PT] Délai entre retry: %dms (valeur ':' dans l'INI)", delay_ms);
 
