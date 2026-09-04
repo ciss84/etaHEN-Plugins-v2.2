@@ -775,6 +775,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 } else {
                     plugin_log("[RETRY] handle %d — attente %dms avant retry",
                                mod, delay_ms);
+                    // Sortir si le process n'existe plus (jeu crashé / fermé)
+                    if (!IsProcessRunning(pid)) {
+                        plugin_log("[RETRY] process %d disparu, abandon", pid);
+                        break;
+                    }
                     usleep(delay_ms * 1000);
                 }
             }
