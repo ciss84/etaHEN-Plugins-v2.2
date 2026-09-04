@@ -744,7 +744,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
             int  mod     = -1;
             int  attempt = 0;
-            bool attached = false;
 
             while (mod <= 0 && attempt < 60)
             {
@@ -757,13 +756,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     usleep(delay_ms * 1000);
                     continue;
                 }
-                attached = true;
 
-                // jb du process jeu
                 if (jb_pid(pid) != 0) {
                     plugin_log("[RETRY] jb_pid échoué");
                     pt_detach(pid);
-                    attached = false;
                     usleep(delay_ms * 1000);
                     continue;
                 }
@@ -772,7 +768,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 mod = inject_prx(pid, prx.path.c_str());
 
                 pt_detach(pid);
-                attached = false;
 
                 if (mod > 0) {
                     plugin_log("[RETRY] OK: %s (handle %d) à la tentative %d",
@@ -789,8 +784,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
     }
 
-wait_and_cleanup:
-    // ── ⑧ Attendre fermeture du jeu, puis cleanup fakelib ─────────────────
+    // ── Attendre fermeture du jeu, puis cleanup fakelib ───────────────────
     plugin_log("[Wait] En attente fermeture jeu (pid %d)...", pid);
     wait_for_pid_exit(pid);
 
