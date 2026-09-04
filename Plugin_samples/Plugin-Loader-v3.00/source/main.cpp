@@ -719,88 +719,73 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
     }
 
-    // ── ② Attente avant injection — délai défini dans l'INI après ':'
-    //  ex: prx/BeachMenu.prx:10000  → 10 secondes
-    //  On prend le MAX des delay_ms de tous les PRX de ce titre.
-    //  Défaut si non spécifié : 10000ms (10s)
+    // ── ② Attente + injection avec retry
+    //  On essaie d'injecter dès que le process est prêt (handle > 0).
+    //  La valeur ':' dans l'INI devient le délai entre chaque tentative (ms).
+    //  Si handle < 0 → on attend delay_ms et on réessaie (max 60 tentatives = ~1 min).
+    //  Dès que handle > 0 → PRX chargé, on passe au suivant.
     {
-        int delay_ms = 10000;
+        int delay_ms = 10000; // défaut entre retry
         for (const auto &prx : prx_list)
             delay_ms = std::max(delay_ms, prx.delay_ms);
 
-        plugin_log("[PT] Attente avant injection: %dms (valeur ':' dans l'INI)", delay_ms);
+        plugin_log("[PT] Délai entre retry: %dms (valeur ':' dans l'INI)", delay_ms);
 
-        int steps = delay_ms / 100;
-        int alive = 0;
-        for (int i = 0; i < steps; i++) {
-            usleep(100000);
-            if (IsProcessRunning(pid)) alive++;
-        }
-        plugin_log("[PT] Process vivant: %d/%d checks", alive, steps);
-    }
+        // Attente initiale minimale — laisser dynld charger libkernel
+        usleep(500000); // 500ms toujours, pour éviter pt_resolve = 0
 
-    // ── ③ jb_pid loader (accès /data depuis le loader lui-même) ──────────
-    {
-        pid_t mypid = getpid();
-        if (jb_pid(mypid) == 0)
-            plugin_log("[PT] jb_pid(loader=%d) OK", mypid);
-        else
-            plugin_log("[PT] jb_pid(loader) déjà fait ou ignoré");
-    }
+        // jb du loader (accès /data)
+        jb_pid(getpid());
 
-    // ── ④ PT_ATTACH sur le process jeu ────────────────────────────────────
-    if (pt_attach(pid) < 0) {
-        plugin_log("[PT] pt_attach(%d) ÉCHEC: %s", pid, strerror(errno));
-        printf_notification("PT attach échoué pour %s     ", title_id);
-        goto wait_and_cleanup;
-    }
-    plugin_log("[PT] pt_attach OK");
-
-    // ── ⑤ jb_pid game (le jeu peut maintenant voir /data pour LoadStartModule) ──
-    if (jb_pid(pid) != 0) {
-        plugin_log("[PT] jb_pid(game=%d) ÉCHEC", pid);
-        pt_detach(pid);
-        printf_notification("jb_pid échoué pour %s     ", title_id);
-        goto wait_and_cleanup;
-    }
-    plugin_log("[PT] jb_pid(game=%d) OK", pid);
-
-    // ── ⑥ Injection multi-PRX (synchrone) ─────────────────────────────────
-    {
-        int success_count = 0;
-        printf_notification("Injection %s...     \n%zu PRX en cours",
-                            title_id, prx_list.size());
-
-        for (size_t i = 0; i < prx_list.size(); i++) {
-            const auto &prx = prx_list[i];
+        for (const auto &prx : prx_list)
+        {
             const char *basename = strrchr(prx.path.c_str(), '/');
             basename = basename ? basename + 1 : prx.path.c_str();
 
-            plugin_log("[PT] [%zu/%zu] → %s", i + 1, prx_list.size(),
-                       prx.path.c_str());
+            int  mod     = -1;
+            int  attempt = 0;
+            bool attached = false;
 
-            int rc = inject_prx(pid, prx.path.c_str());
+            while (mod <= 0 && attempt < 60)
+            {
+                attempt++;
+                plugin_log("[RETRY] %s — tentative %d/60", basename, attempt);
 
-            if (rc > 0) {
-                plugin_log("[PT] OK: %s (handle %d)", basename, rc);
-                success_count++;
-            } else {
-                plugin_log("[PT] FAIL: %s (rc=%d)", basename, rc);
+                // Attacher
+                if (pt_attach(pid) < 0) {
+                    plugin_log("[RETRY] pt_attach échoué, attente %dms...", delay_ms);
+                    usleep(delay_ms * 1000);
+                    continue;
+                }
+                attached = true;
+
+                // jb du process jeu
+                if (jb_pid(pid) != 0) {
+                    plugin_log("[RETRY] jb_pid échoué");
+                    pt_detach(pid);
+                    attached = false;
+                    usleep(delay_ms * 1000);
+                    continue;
+                }
+
+                // Tentative d'injection
+                mod = inject_prx(pid, prx.path.c_str());
+
+                pt_detach(pid);
+                attached = false;
+
+                if (mod > 0) {
+                    plugin_log("[RETRY] OK: %s (handle %d) à la tentative %d",
+                               basename, mod, attempt);
+                } else {
+                    plugin_log("[RETRY] handle %d — attente %dms avant retry",
+                               mod, delay_ms);
+                    usleep(delay_ms * 1000);
+                }
             }
-        }
 
-        // ── ⑦ Détacher → le jeu reprend son exécution normale ─────────────
-        pt_detach(pid);
-        plugin_log("[PT] pt_detach — jeu relâché (%d/%zu PRX chargés)",
-                   success_count, prx_list.size());
-
-        if (fakelib_wanted) {
-            printf_notification("%d/%zu PRX → %s     \nFakelib: %s",
-                                success_count, prx_list.size(), title_id,
-                                fakelib_mount ? "OK" : "absent");
-        } else {
-            printf_notification("%d/%zu PRX → %s     ",
-                                success_count, prx_list.size(), title_id);
+            if (mod <= 0)
+                plugin_log("[RETRY] ECHEC définitif: %s après 60 tentatives", basename);
         }
     }
 
