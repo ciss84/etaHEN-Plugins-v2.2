@@ -8,6 +8,7 @@
 #include "util.hpp"
 #include "allocator.hpp"
 #include <sys/_stdint.h>
+
 class Hijacker {
 	
 #ifndef LIBKERNEL_HANDLE
