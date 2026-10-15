@@ -1,0 +1,59 @@
+name: XOR
+
+on:
+  push:
+    paths-ignore:
+      - "**/*.md"
+      - '**/*.txt'
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - '**/*.txt'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.event_name  }}
+  cancel-in-progress: true
+
+jobs:
+  payload-build:
+    runs-on: ubuntu-latest
+    steps:
+    
+    - name: Get Latest SDK Release Info
+      id: sdk-release
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const release = await github.rest.repos.getLatestRelease({
+            owner: 'ps5-payload-dev',
+            repo: 'sdk'
+          });
+          core.setOutput('download_url', release.data.assets.find(asset => asset.name.endsWith('.zip')).browser_download_url);
+
+    - name: Download Latest SDK
+      run: |
+        curl -L "${{ steps.sdk-release.outputs.download_url }}" -o ps5-sdk.zip
+        mkdir -p ${{ runner.tool_cache }}/ps5-payload-sdk
+        unzip ps5-sdk.zip -d ${{ runner.tool_cache }}/ps5-payload-sdk
+        echo PS5_PAYLOAD_SDK=${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk >> $GITHUB_ENV
+        chmod 0755 -R ${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk 
+
+    - name: Checkout Payload
+      uses: actions/checkout@v3
+
+    - name: Build SDK-Binaries
+      run: bash ./build.sh
+      env:
+        CFLAGS: "-O2 -DNDEBUG"
+        CXXFLAGS: "-O2 -DNDEBUG"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@main
+      with:
+        name: SDK-Binaries
+        path:  |
+              ELF_samples/bin/*.elf
+              Plugin_samples/bin/*.elf
+              Plugin_samples/bin/*.plugin
