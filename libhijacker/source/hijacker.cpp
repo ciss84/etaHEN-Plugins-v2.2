@@ -1,4 +1,3 @@
-#include <onion/log.h>
 #include "hijacker.hpp"
 #include "offsets.hpp"
 #include "util.hpp"
@@ -31,7 +30,7 @@ int Hijacker::getMainThreadId() const {
 			}
 		}
 		if (mainThreadId == -1) [[unlikely]] {
-			LOG_ERROR("main thread id not found");
+			puts("main thread id not found");
 		}
 	}
 	return mainThreadId;
@@ -68,7 +67,7 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 	int uid = -1;
 	kernel_copyout(ucred + 0x04, &uid, 0x4);
 	if(uid == 0 && !escapeSandbox){
-		LOG_WARN("already jailbroken");
+		puts("already jailbroken");
 		return;
 	}
 	UniquePtr<uint8_t[]> rootvnode_area_store{new uint8_t[0x100]};
@@ -87,7 +86,11 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 	copyin(ucred + 0x14, &uid_store, 0x4);		  // cr_rgid
 
 	if (escapeSandbox) {
-		// Escape sandbox
+		// Escape sandbox - Récupérer et réinitialiser le vnode root depuis le kernel
+		memset(rootvnode_area_store.get(), 0, 0x100);
+		kernel_copyout(kernel_base + offsets::root_vnode(), rootvnode_area_store.get(), 0x100);
+		
+		// Copier le vnode root dans fd_rdir et fd_jdir
 		copyin(fd + 0x10, rootvnode_area_store.get(), 0x8);  // fd_rdir
 		copyin(fd + 0x18, rootvnode_area_store.get(), 0x8);  // fd_jdir
 	}
