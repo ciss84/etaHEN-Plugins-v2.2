@@ -954,7 +954,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.01 By @84Ciss",
+    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.02 By @84Ciss",
                         fw_major, fw_minor);
     plugin_log("Surveillance SceSysCore.elf (pid %d)...", syscore_pid);
 
