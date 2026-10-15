@@ -1,0 +1,60 @@
+name: v0.42
+
+on:
+  push:
+    paths-ignore:
+      - "**/*.md"
+      - '**/*.txt'
+  pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - '**/*.txt'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.event_name  }}
+  cancel-in-progress: true
+
+jobs:
+  payload-build:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Download SDK v0.42
+      run: |
+        echo "SDK release: v0.42"
+        curl -L "https://github.com/ps5-payload-dev/sdk/releases/download/v0.42/ps5-payload-sdk.zip" -o ps5-sdk.zip
+        mkdir -p ${{ runner.tool_cache }}/ps5-payload-sdk
+        unzip ps5-sdk.zip -d ${{ runner.tool_cache }}/ps5-payload-sdk
+        echo PS5_PAYLOAD_SDK=${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk >> $GITHUB_ENV
+        chmod 0755 -R ${{ runner.tool_cache }}/ps5-payload-sdk/ps5-payload-sdk
+
+    - name: Checkout Payload
+      uses: actions/checkout@v3
+
+    - name: Build SDK-Binaries
+      run: bash ./build.sh
+      env:
+        CFLAGS: "-O2 -DNDEBUG"
+        CXXFLAGS: "-O2 -DNDEBUG"
+
+    - name: Package libs
+      run: |
+        mkdir -p libs_out
+        cp lib/libhijacker.a      libs_out/
+        cp lib/libNidResolver.a   libs_out/
+        cp lib/libNineS.a         libs_out/
+        cp lib/libelfldr.a        libs_out/
+        cp lib/libelfloader.a     libs_out/
+        cp lib/libSelfDecryptor.a libs_out/
+        cd libs_out && zip ../libs.zip *.a
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: SDK-Binaries
+        path:  |
+              ELF_samples/bin/*.elf
+              Plugin_samples/bin/*.elf
+              Plugin_samples/bin/*.plugin
+              libs.zip

@@ -1,4 +1,3 @@
-#include <onion/log.h>
 #include "dbg/dbg.hpp"
 #include "hijacker.hpp"
 #include "hijacker/hijacker.hpp"
@@ -99,14 +98,14 @@ UniquePtr<Hijacker> Spawner::spawn() {
 
 	if (id == lastPid) {
 		// catastrophic failure
-		LOG_ERROR("catastrophic failure");
-		LOG_DEBUG("lastPid %d id %d", lastPid, id);
+		puts("catastrophic failure\n");
+		printf("lastPid %d id %d\n", lastPid, id);
 		return nullptr;
 	}
 
 	UniquePtr<dbg::ProcessInfo> info = new dbg::ProcessInfo(id);
 
-	LOG_DEBUG("spawned %s", info->name().c_str());
+	printf("spawned %s\n", info->name().c_str());
 	// TODO: time from here until the stack pointer is set
 	UniquePtr<Hijacker> spawned = nullptr;
 	while (spawned == nullptr) {
@@ -167,11 +166,11 @@ UniquePtr<Hijacker> Spawner::bootstrap(Hijacker &hijacker) {
 		ProcessPointer<Args::Result> pres{pid, argbuf};
 		Args::Result res = *pres;
 		if (res.state == -1) {
-			LOG_ERROR("spawn failed err: %s", strerror(res.err));
+			printf("spawn failed err: %s\n", strerror(res.err));
 		} else if (res.state > 1) {
-			LOG_ERROR("spawn failed %d", res.state);
+			printf("spawn failed %d\n", res.state);
 		} else {
-			LOG_ERROR("spawn failed state: %llx err: 0x%llx", (unsigned long long) res.state, (unsigned long long) res.err);
+			printf("spawn failed state: %llx err: 0x%llx\n", (unsigned long long) res.state, (unsigned long long) res.err);
 		}
 		return nullptr;
 	}

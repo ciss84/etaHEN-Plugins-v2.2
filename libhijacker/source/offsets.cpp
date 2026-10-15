@@ -1,6 +1,5 @@
 extern "C"
 {
-#include <onion/log.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -63,22 +62,6 @@ static constexpr uint32_t V1001 = 0x10010000;
 static constexpr uint32_t V1020 = 0x10200000;
 static constexpr uint32_t V1040 = 0x10400000;
 static constexpr uint32_t V1060 = 0x10600000;
-/* 11.x–13.x — allproc from kstuff-lite prosper0gdb/offsets (root_vnode TBD). */
-static constexpr uint32_t V1100 = 0x11000000;
-static constexpr uint32_t V1120 = 0x11200000;
-static constexpr uint32_t V1140 = 0x11400000;
-static constexpr uint32_t V1160 = 0x11600000;
-static constexpr uint32_t V1200 = 0x12000000;
-static constexpr uint32_t V1202 = 0x12020000;
-static constexpr uint32_t V1220 = 0x12200000;
-static constexpr uint32_t V1240 = 0x12400000;
-static constexpr uint32_t V1260 = 0x12600000;
-static constexpr uint32_t V1270 = 0x12700000;
-static constexpr uint32_t V1300 = 0x13000000;
-static constexpr uint32_t V1320 = 0x13200000;
-static constexpr uint32_t V1340 = 0x13400000;
-static constexpr uint32_t V1342 = 0x13420000;
-static constexpr uint32_t V1360 = 0x13600000;
 
 
 
@@ -111,8 +94,7 @@ namespace offsets {
             case V300: case V310: case V320: case V321:
                 allprocOffset = 0x276DC58;
                 break;
-            case V400: case V402: case V403: case V450:
-            case V451:
+            case V400: case V402: case V403: case V450: case V451:
                 allprocOffset = 0x27EDCB8;
                 break;
             case V500: case V502: case V510: case V550:
@@ -136,21 +118,8 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 allprocOffset = 0x2765D70;
                 break;
-            case V1100: case V1120: case V1140: case V1160:
-                allprocOffset = 0x2875D70; /* kstuff 11_00..11_60 */
-                break;
-            case V1200: case V1202: case V1220: case V1240: case V1260:
-            case V1270:
-                allprocOffset = 0x2885E00; /* kstuff 12_00..12_70 */
-                break;
-            case V1300: case V1320:
-                allprocOffset = 0x28C5E00; /* kstuff 13_00..13_20 */
-                break;
-            case V1340: case V1342: case V1360:
-                allprocOffset = 0x28C9E80; /* kstuff 13_40..13_60 */
-                break;
             default:
-                LOG_WARN("Unsupported firmware version: 0x%x", getSystemSwVersion() & VERSION_MASK);
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 allprocOffset = -1;
                 break;
         }
@@ -168,12 +137,10 @@ namespace offsets {
                 return 0x63E1274;
             case V300: case V310: case V320: case V321:
                 return 0x6466474;
-            case V400:
+            case V400: case V402: case V403: case V450: case V451:
                 return 0x6506474;
-            case V402: case V403: case V450: case V451:
-                return 0x6505474;
             case V500: case V502: case V510: case V550:
-                return 0x66466EC;
+                return 0x66466EC; // SECURITY_FLAGS
             case V600: case V602: case V650:
                 return 0x65968EC;
             case V700: case V701: case V720: case V740: case V760: case V761:
@@ -187,7 +154,7 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x0D79064;
             default:
-                LOG_WARN("Unsupported firmware version: 0x%x", getSystemSwVersion() & VERSION_MASK);
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
         }
     }
@@ -200,8 +167,8 @@ namespace offsets {
             case V200: case V220: case V225: case V226:
             case V230: case V250: case V270:
             case V300: case V310: case V320: case V321:
-            case V400: case V402: case V403: case V450:
-            case V451:
+            case V400: case V402: case V403: case V450: case V451:
+                return 0x6506498;
             case V500: case V502: case V510: case V550:
                 return 0x6241098;
             case V600: case V602: case V650:
@@ -209,15 +176,15 @@ namespace offsets {
             case V700: case V701: case V720: case V740: case V760: case V761:
                 return 0x0AC8064 + 0x24;
             case V800: case V820: case V840: case V860:
-                return 0x0AC3064 + 0x24;
+                return 0x0AC3088; //0x0AC3064 + 0x24
             case V900:
-                return 0x0D72064 + 0x24;
+                return 0x0D72088; //0x0D72064 + 0x24
             case V905: case V920: case V940: case V960:
-                return 0x0D73064 + 0x24;
+                return 0x0D73088; //0x0D73064 + 0x24
             case V1000: case V1001: case V1020: case V1040: case V1060:
-                return 0x0D79064 + 0x24;
+                return 0x0D79088; //0x0D79064 + 0x24
             default:
-                LOG_WARN("Unsupported firmware version: 0x%x", getSystemSwVersion() & VERSION_MASK);
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
         }
     }
@@ -230,24 +197,24 @@ namespace offsets {
             case V200: case V220: case V225: case V226:
             case V230: case V250: case V270:
             case V300: case V310: case V320: case V321:
-            case V400: case V402: case V403: case V450:
-            case V451:
-            case V500: case V502: case V510: case V550:
-                return 0x6646710;
+            case V400: case V402: case V403: case V450: case V451:
+                return 0x6506500;
+            case V500: case V502: case V510: case V550: 
+                return 0x6646710; //qa flags offset
             case V600: case V602: case V650:
                 return 0x65968EC + 0x8C;
             case V700: case V701: case V720: case V740: case V760: case V761:
                 return 0x0AC8064 + 0x8C;
             case V800: case V820: case V840: case V860:
-                return 0x0AC3064 + 0x8C;
+                return 0x0AC30F0; //0x0AC3064 + 0x8C
             case V900:
-                return 0x0D72064 + 0x8C;
+                return 0x0D720F0; //0x0D72064 + 0x8C
             case V905: case V920: case V940: case V960:
-                return 0x0D73064 + 0x8C;
+                return 0x0D730F0; //0x0D73064 + 0x8C
             case V1000: case V1001: case V1020: case V1040: case V1060:
-                return 0x0D79064 + 0x8C;
+                return 0x0D790F0; //0x0D79064 + 0x8C
             default:
-                LOG_WARN("Unsupported firmware version: 0x%x", getSystemSwVersion() & VERSION_MASK);
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
         }
     }
@@ -263,8 +230,7 @@ namespace offsets {
                 return 0x67134C0;
             case V300: case V310: case V320: case V321:
                 return 0x67AB4C0;
-            case V400: case V402: case V403: case V450:
-            case V451:
+            case V400: case V402: case V403: case V450: case V451:
                 return 0x66E74C0;
             case V500: case V502: case V510: case V550:
                 return 0x6853510;
@@ -281,7 +247,7 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x2FA3510;
             default:
-                LOG_WARN("Unsupported firmware version: 0x%x", getSystemSwVersion() & VERSION_MASK);
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
         }
     }
