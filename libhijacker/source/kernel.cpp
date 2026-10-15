@@ -1,3 +1,4 @@
+#include <onion/log.h>
 #include "kernel.hpp"
 #include "util.hpp"
 
@@ -35,30 +36,30 @@ bool createReadWriteSockets(const UniquePtr<KProc> &proc, const int *sockets) no
 	auto newtbl = proc->getFdTbl();
 	auto sock = newtbl.getFileData(sockets[0]);
 	if (sock == 0) [[unlikely]] {
-		puts("createReadWriteSockets sock == 0");
+		LOG_DEBUG("createReadWriteSockets sock == 0");
 		return false;
 	}
 	kwrite<uint32_t>(sock, 0x100);
 	auto pcb = kread<uintptr_t>(sock + 0x18);
 	if (pcb == 0) [[unlikely]] {
-		puts("createReadWriteSockets master pcb == 0");
+		LOG_DEBUG("createReadWriteSockets master pcb == 0");
 		return false;
 	}
 	auto master_inp6_outputopts = kread<uintptr_t>(pcb + 0x120);
 	if (master_inp6_outputopts == 0) [[unlikely]] {
-		puts("createReadWriteSockets master_inp6_outputopts == 0");
+		LOG_DEBUG("createReadWriteSockets master_inp6_outputopts == 0");
 		return false;
 	}
 	sock = newtbl.getFileData(sockets[1]);
 	kwrite<uint32_t>(sock, 0x100);
 	pcb = kread<uintptr_t>(sock + 0x18);
 	if (pcb == 0) [[unlikely]] {
-		puts("createReadWriteSockets victim pcb == 0");
+		LOG_DEBUG("createReadWriteSockets victim pcb == 0");
 		return false;
 	}
 	auto victim_inp6_outputopts = kread<uintptr_t>(pcb + 0x120);
 	if (victim_inp6_outputopts == 0) [[unlikely]] {
-		puts("createReadWriteSockets victim_inp6_outputopts == 0");
+		LOG_DEBUG("createReadWriteSockets victim_inp6_outputopts == 0");
 		return false;
 	}
 	kwrite(master_inp6_outputopts + 0x10, victim_inp6_outputopts + 0x10);
