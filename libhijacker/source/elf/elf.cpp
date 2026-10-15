@@ -1,3 +1,4 @@
+#include <onion/log.h>
 #include <stddef.h>
 #define _MMAP_DECLARED
 #include "dbg/dbg.hpp"
@@ -18,7 +19,6 @@ extern "C" {
 	#include <sys/elf64.h>
 	#include <ps5/payload.h>
 
-	int puts(const char *);
 	int usleep(unsigned int useconds);
 	uintptr_t mmap(uintptr_t, size_t, int, int, int, off_t);
 	int munmap(uintptr_t addr, uint64_t len);
@@ -86,7 +86,7 @@ void log_to_file(const char *msg) {
 	}
 	_write(fd, msg, __builtin_strlen(msg));
 	close(fd);
-	printf("[ELF_LOADER] %s", msg);
+	LOG_DEBUG("[ELF_LOADER] %s", msg);
 }
 
 bool Elf::parseDynamicTable() noexcept {
@@ -233,12 +233,12 @@ bool Elf::parseDynamicTable() noexcept {
 	for (auto i = 0; i < handleCount; i++) {
 		auto ptr = hijacker->getLib(preLoadedHandles[i]);
 		if (ptr == nullptr) [[unlikely]] {
-			printf("failed to get lib for 0x%x\n", (unsigned int) preLoadedHandles[i]);
+			LOG_ERROR("failed to get lib for 0x%x", (unsigned int) preLoadedHandles[i]);
 			log_to_file("failed to get lib\n");
 			return false;
 		}
 		if (resolver->add_library_metadata(ptr->imagebase(), ptr->getMetaDataAddress()) != 0) {
-			printf("failed to add library metadata for 0x%x\n", (unsigned int) preLoadedHandles[i]);
+			LOG_ERROR("failed to add library metadata for 0x%x", (unsigned int) preLoadedHandles[i]);
 			log_to_file("failed to add library metadata\n");
 			return false;
 		}
@@ -306,7 +306,7 @@ static bool loadLibrariesInplace(Hijacker &hijacker, const Array<String> &names,
 		int handle = id != 0 ? sceSysmoduleLoadModuleInternal(id) :
 			sceSysmoduleLoadModuleByNameInternal(name.c_str(), 0, 0, 0, 0, 0);
 		if (handle == -1) {
-			printf("failed to get lib handle for %s\n", name.c_str());
+			LOG_ERROR("failed to get lib handle for %s", name.c_str());
 			log_to_file("failed to get lib handle\n");
 			return false;
 		}
@@ -318,12 +318,12 @@ static bool loadLibrariesInplace(Hijacker &hijacker, const Array<String> &names,
 	for (size_t i = 0; i < nlibs; i++) {
 		auto ptr = hijacker.getLib(names[i]);
 		if (ptr == nullptr) [[unlikely]] {
-			printf("failed to get lib handle for %s\n", names[i].c_str());
+			LOG_ERROR("failed to get lib handle for %s", names[i].c_str());
 			log_to_file("failed to get lib handle\n");
 			return false;
 		}
 		if (resolver.add_library_metadata(ptr->imagebase(), ptr->getMetaDataAddress()) != 0) {
-			printf("failed to add library metadata for %s\n", names[i].c_str());
+			LOG_ERROR("failed to add library metadata for %s", names[i].c_str());
 			log_to_file("failed to add library metadata\n");
 			return false;
 		}
@@ -373,7 +373,7 @@ bool loadLibraries(Hijacker &hijacker, dbg::Tracer &tracer, const Array<String> 
 	int handle = -1;
 	do{
         lib = hijacker.getLib("libSceSysmodule.sprx");
-		if(lib == nullptr) printf("[1] libSceSysmodule.sprx is NULL\n");
+		if(lib == nullptr) LOG_DEBUG("[1] libSceSysmodule.sprx is NULL");
 		number_of_tries++;
 		if(number_of_tries > 150) {
 			log_to_file("libSceSysmodule.sprx not loaded\n");
@@ -381,21 +381,21 @@ bool loadLibraries(Hijacker &hijacker, dbg::Tracer &tracer, const Array<String> 
 		}
 
 		if(lib != nullptr) {
-			printf("[2-] libSceSysmodule.sprx is not NULL\n");
+			LOG_DEBUG("[2-] libSceSysmodule.sprx is not NULL");
 			break;
 		}
 		tracer.dynlib_load_prx("/system/common/lib/libSceSysmodule.sprx", &handle);
 		if(handle > 0){
 			lib = hijacker.getLib(handle);
 			if(lib == nullptr) {
-				printf("getlib(handle) is NULL\n");
+				LOG_DEBUG("getlib(handle) is NULL");
 			}
 			else
 			{
-				printf("getlib(handle) is not NULL\n");
+				LOG_DEBUG("getlib(handle) is not NULL");
 			}
 		}
-		printf("libSceSysmodule.sprx: %p, try %i, handle %x\n", lib.get(), number_of_tries, handle);
+		LOG_DEBUG("libSceSysmodule.sprx: %p, try %i, handle %x", lib.get(), number_of_tries, handle);
 
 		usleep(100000);
 	}while (lib == nullptr);
@@ -432,15 +432,15 @@ bool loadLibraries(Hijacker &hijacker, dbg::Tracer &tracer, const Array<String> 
     int handle = -1;
 	int ret = tracer.dynlib_load_prx("libSceSysmodule.sprx", &handle);
 	if (ret != 0 || handle == -1) [[unlikely]] {
-		printf("failed to get lib handle for libSceSysmodule.sprx, ret %i\n", ret);
+		LOG_ERROR("failed to get lib handle for libSceSysmodule.sprx, ret %i", ret);
 		int ret = tracer.dynlib_load_prx("/system/common/lib/libSceSysmodule.sprx", &handle);
 	    if (ret != 0 || handle == -1) [[unlikely]] {
-		  printf("failed to get lib handle for libSceSysmodule.sprx, ret %i\n", ret);
+		  LOG_ERROR("failed to get lib handle for libSceSysmodule.sprx, ret %i", ret);
 		  return false;
 	   }
 	}
 	
-	printf("handle: 0x%X ret %i\n", handle, ret);
+	LOG_DEBUG("handle: 0x%X ret %i", handle, ret);
 
 	int (*sceSysmoduleLoadModuleInternal)(uint32_t) = nullptr;
 	int (*sceSysmoduleLoadModuleByNameInternal)(const char *fname, uint64_t, uint64_t, uint64_t, uint64_t, uint64_t) = nullptr;
@@ -465,28 +465,28 @@ bool loadLibraries(Hijacker &hijacker, dbg::Tracer &tracer, const Array<String> 
 		int handle = -1;
 		if (positions[i] & INTERNAL_MASK) {
 			handle = tracer.call<int>((uintptr_t)sceSysmoduleLoadModuleInternal, static_cast<uint32_t>(positions[i]));
-			printf("id: 0x%x, handle %i\n", (unsigned int)positions[i], handle);
+			LOG_DEBUG("id: 0x%x, handle %i", (unsigned int)positions[i], handle);
 			String prx_path("/system/common/lib/");
 			prx_path += names[i];
 			prx_path += ".sprx";
 			tracer.dynlib_load_prx(prx_path.c_str(), &handle);
-			printf("[2] path: %s, handle %i\n", prx_path.c_str(), handle);
+			LOG_DEBUG("[2] path: %s, handle %i", prx_path.c_str(), handle);
 			auto ptr = hijacker.getLib(handle);
-				printf("failed to get lib handle for 0x%x, handle %i\n", (unsigned int)positions[i], handle);
+				LOG_ERROR("failed to get lib handle for 0x%x, handle %i", (unsigned int)positions[i], handle);
 				if (resolver.add_library_metadata(ptr->imagebase(), ptr->getMetaDataAddress()) != 0) {
-					printf("failed to add library metadata for %s\n", names[i].c_str());
+					LOG_ERROR("failed to add library metadata for %s", names[i].c_str());
 					return false;
 				}
 				continue;
 		} else {
 			if(names[i] == "libSceMsgDialog"){
 			tracer.dynlib_load_prx("/system/common/lib/libSceMsgDialog.native.sprx", &handle);
-			printf("[2] handle %i\n", handle);
+			LOG_DEBUG("[2] handle %i", handle);
 			auto ptr = hijacker.getLib(handle);
 			if (ptr == nullptr) [[unlikely]] {
-				printf("failed to get lib handle for 0x%x, handle %i\n", (unsigned int)positions[i], handle);
+				LOG_ERROR("failed to get lib handle for 0x%x, handle %i", (unsigned int)positions[i], handle);
 				if (resolver.add_library_metadata(ptr->imagebase(), ptr->getMetaDataAddress()) != 0) {
-					printf("failed to add library metadata for %s\n", names[i].c_str());
+					LOG_ERROR("failed to add library metadata for %s", names[i].c_str());
 					return false;
 				}
 				continue;
@@ -495,28 +495,28 @@ bool loadLibraries(Hijacker &hijacker, dbg::Tracer &tracer, const Array<String> 
 			else
 			   handle = tracer.call<int>((uintptr_t)sceSysmoduleLoadModuleByNameInternal, strtab + positions[i], 0, 0, 0, 0, 0);
 
-			printf("handle %i\n", handle);
-			//printf("str: %s\n", (const char*)(strtab + positions[i]));
+			LOG_DEBUG("handle %i", handle);
+			//LOG_DEBUG("str: %s", (const char*)(strtab + positions[i]));
 		}
 
 		if (handle == -1) [[unlikely]] {
-			printf("failed to get lib handle for %s\n", names[i].c_str());
+			LOG_ERROR("failed to get lib handle for %s", names[i].c_str());
 			return false;
 		}
 
 		auto ptr = names[i] == "libSceMsgDialog" ? hijacker.getLib("libSceMsgDialog.native") :  hijacker.getLib(names[i]);
 		if (ptr == nullptr) [[unlikely]] {
-			printf("failed to get lib handle for %s\n", names[i].c_str());
+			LOG_ERROR("failed to get lib handle for %s", names[i].c_str());
 			return false;
 		}
 
 		if (resolver.add_library_metadata(ptr->imagebase(), ptr->getMetaDataAddress()) != 0) {
-			printf("failed to add library metadata for %s\n", names[i].c_str());
+			LOG_ERROR("failed to add library metadata for %s", names[i].c_str());
 			return false;
 		}
 	}
 
-	puts("finished loading libraries");
+	LOG_DEBUG("finished loading libraries");
 	return true;
 }
 
@@ -565,7 +565,7 @@ bool Elf::processProgramHeaders() noexcept {
 		}
 	}
 	if (textOffset == 0) {
-		puts("no executable section found");
+		LOG_DEBUG("no executable section found");
 		return false;
 	}
 
@@ -610,7 +610,7 @@ bool Elf::processProgramHeaders() noexcept {
 	}
 
 	if (imagebase != mem) {
-		puts("mmap Elf::processProgramHeaders did not give the requested address");
+		LOG_DEBUG("mmap Elf::processProgramHeaders did not give the requested address");
 		return false;
 	}
 
@@ -639,7 +639,7 @@ bool Elf::processProgramHeaders() noexcept {
 			return false;
 		}
 		if (result != addr) {
-			puts("mmap Elf::processProgramHeaders mmap did not give the requested address");
+			LOG_DEBUG("mmap Elf::processProgramHeaders mmap did not give the requested address");
 			return false;
 		}
 		if (inplace) {
@@ -706,8 +706,8 @@ uintptr_t Elf::setupKernelRW() noexcept {
 	files[0] = tracer.socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 	files[1] = tracer.socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
 
-	printf("master socket: %d\n", files[0]);
-	printf("victim socket: %d\n", files[1]);
+	LOG_DEBUG("master socket: %d", files[0]);
+	LOG_DEBUG("victim socket: %d", files[1]);
 
 	if (files[0] == -1 || files[1] == -1) [[unlikely]] {
 		tracer.perror("Elf::setupKernelRW socket");
@@ -719,7 +719,7 @@ uintptr_t Elf::setupKernelRW() noexcept {
 		return 0;
 	}
 
-	printf("rw pipes: %d, %d\n", files[2], files[3]);
+	LOG_DEBUG("rw pipes: %d, %d", files[2], files[3]);
 
 	unsigned int buf[]{20, IPPROTO_IPV6, IPV6_TCLASS, 0, 0, 0}; // NOLINT(*)
 
@@ -734,7 +734,7 @@ uintptr_t Elf::setupKernelRW() noexcept {
 	}
 
 	if (!createReadWriteSockets(hijacker->getProc(), files)) {
-		puts("failed to create kernelrw sockets");
+		LOG_ERROR("failed to create kernelrw sockets");
 		return 0;
 	}
 
@@ -781,7 +781,7 @@ bool Elf::load() noexcept {
 
 		int j = 0;
 		while (!hijacker->write(vaddr, data + phdr->p_offset, phdr->p_filesz)) {
-			printf("failed to write section data for phdr with paddr 0x%08lx\n", phdr->p_paddr);
+			LOG_ERROR("failed to write section data for phdr with paddr 0x%08lx", phdr->p_paddr);
 			if (j++ > 10) { // NOLINT(cppcoreguidelines-avoid-magic-numbers)
 				// TODO: find out why I did this
 				return false;
@@ -793,7 +793,7 @@ bool Elf::load() noexcept {
 
 
 bool Elf::launch() noexcept {
-	puts("processing program headers");
+	LOG_DEBUG("processing program headers");
 	log_to_file( "processing program headers\n");
 
 	if (!processProgramHeaders()) [[unlikely]] {
@@ -801,21 +801,21 @@ bool Elf::launch() noexcept {
 		return false;
 	}
 
-	puts("processing dynamic table");
+	LOG_DEBUG("processing dynamic table");
 	log_to_file( "processing dynamic table\n");
 
 	if (!parseDynamicTable()) [[unlikely]] {
 		log_to_file( "failed to process dynamic table\n");
 		return false;
 	}
-	puts("processing relocations");
+	LOG_DEBUG("processing relocations");
 	log_to_file( "processing relocations\n");
 
 	if (!processRelocations()) [[unlikely]] {
 		log_to_file( "failed to process relocations\n");
 		return false;
 	}
-	puts("processing plt relocations");
+	LOG_DEBUG("processing plt relocations");
 	log_to_file( "processing plt relocation\n");
 
 	if (!processPltRelocations()) [[unlikely]] {
@@ -823,7 +823,7 @@ bool Elf::launch() noexcept {
 		return false;
 	}
 
-	puts("setting up kernel rw");
+	LOG_DEBUG("setting up kernel rw");
 	log_to_file( "setting up kernel rw\n");
 
 	uintptr_t args = setupKernelRW();
@@ -832,7 +832,7 @@ bool Elf::launch() noexcept {
 		return false;
 	}
 
-	puts("loading into memory");
+	LOG_DEBUG("loading into memory");
 	log_to_file( "loading into memory\n");
 
 	if (!load()) [[unlikely]] {
@@ -840,7 +840,7 @@ bool Elf::launch() noexcept {
 		return false;
 	}
 
-	puts("starting");
+	LOG_DEBUG("starting");
 	log_to_file( "starting\n");
 
 
@@ -853,7 +853,7 @@ static void correctRsp(dbg::Registers &regs) noexcept {
 }
 
 bool Elf::start(uintptr_t args) noexcept {
-	printf("imagebase: 0x%08lx\n", imagebase);
+	LOG_DEBUG("imagebase: 0x%08lx", imagebase);
 	if (hijacker->getPid() == getpid()) {
 		auto fun = reinterpret_cast<int(*)(uintptr_t)>(imagebase + e_entry); // NOLINT(*)
 		bool res = fun(args) == 0;
@@ -870,7 +870,7 @@ bool Elf::start(uintptr_t args) noexcept {
 	regs.rip(imagebase + e_entry);
 	tracer.setRegisters(regs);
 	// it will run on detatch
-	puts("great success");
+	LOG_DEBUG("great success");
 	return true;
 }
 
@@ -896,7 +896,7 @@ uintptr_t Elf::getSymbolAddress(const Elf64_Rela *__restrict rel) const noexcept
 	if (libsym) {
 		return libsym;
 	}
-	printf("symbol lookup for %s failed\n", strtab + sym->st_name);
+	LOG_ERROR("symbol lookup for %s failed", strtab + sym->st_name);
 	return 0;
 }
 

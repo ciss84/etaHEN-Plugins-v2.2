@@ -24,12 +24,12 @@ typedef struct
 
 /* Hash a single 512-bit block. This is the core of the algorithm. */
 static inline void SHA1Transform(uint32_t *restrict state, const uint8_t *restrict data) {
-	/* sha1-x86.c - Intel SHA extensions using C intrinsics    */
+	/* sha1_x86.c - Intel SHA extensions using C intrinsics    */
 	/*   Written and place in public domain by Jeffrey Walton  */
 	/*   Based on code from Intel, and by Sean Gulley for      */
 	/*   the miTLS project.                                    */
 
-	/* gcc -DTEST_MAIN -msse4.1 -msha sha1-x86.c -o sha1.exe   */
+	/* gcc -DTEST_MAIN -msse4.1 -msha sha1_x86.c -o sha1.exe   */
 	__m128i ABCD, ABCD_SAVE, E0, E0_SAVE, E1;
 	__m128i MSG0, MSG1, MSG2, MSG3;
 	const __m128i MASK = _mm_set_epi64x(0x0001020304050607ULL, 0x08090a0b0c0d0e0fULL);
