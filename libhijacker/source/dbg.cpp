@@ -1,4 +1,3 @@
-#include <onion/log.h>
 #include "dbg/args.hpp"
 #include "dbg/dbg.hpp"
 #include "hijacker/hijacker.hpp"
@@ -90,14 +89,14 @@ static void logState(const DbgArg3 &arg) {
 		}
 	}
 	if (state == 7 || state == 0) {
-		LOG_DEBUG("idk what this means other than we're screwed");
+		puts("idk what this means other than we're screwed");
 	}
-	LOG_DEBUG("state: 0x%08lx", state);
+	printf("state: 0x%08lx\n", state);
 	// NOLINTEND(*)
 }
 
 void suspend(int pid) {
-	LOG_DEBUG("suspending");
+	puts("suspending");
 	DbgArg1 arg1{1, DbgCommand::ARG2_CMD};
 	DbgKickProcessArg arg2{pid};
 	DbgArg3 arg3{};
@@ -106,7 +105,7 @@ void suspend(int pid) {
 }
 
 void resume(int pid) {
-	LOG_DEBUG("resuming");
+	puts("resuming");
 	// this is the same as suspend but is separate for easier debugging
 	DbgArg1 arg1{1, DbgCommand::ARG2_CMD};
 	DbgKickProcessArg arg2{pid};
@@ -122,7 +121,7 @@ bool read(int pid, uintptr_t src, void *dst, size_t length) {
 	mdbg_call(arg1, arg2, arg3);
 	if (arg3.length != length) {
 		int err = arg3.err != -1 ? (int) arg3.err : errno;
-		LOG_ERROR("read failed %d: %s", err, strerror(err));
+		printf("read failed %d: %s\n", err, strerror(err));
 		return false;
 	}
 	return true;
@@ -135,7 +134,7 @@ bool write(int pid, uintptr_t dst, const void *src, size_t length) {
 	mdbg_call(arg1, arg2, arg3);
 	if (arg3.length != length) {
 		int err = arg3.err != -1 ? (int) arg3.err : errno;
-		LOG_ERROR("write failed %d: %s", err, strerror(err));
+		printf("write failed %d: %s\n", err, strerror(err));
 		return false;
 	}
 	return true;
@@ -155,7 +154,7 @@ uintptr_t Tracer::call(const Registers &backup, Registers &jmp) const noexcept {
 		auto hijacker = Hijacker::getHijacker(pid);
 		libkernel_base = hijacker->getLibKernelBase();
 		if (libkernel_base == 0) [[unlikely]] {
-			LOG_ERROR("failed to get libkernel base");
+			puts("failed to get libkernel base");
 			return -1;
 		}
 	}
@@ -220,13 +219,13 @@ void Tracer::perror(const char *msg) const noexcept {
 		auto hijacker = Hijacker::getHijacker(pid);
 		errno_addr = hijacker->getLibKernelAddress(nid::_errno);
 		if (errno_addr == 0) [[unlikely]] {
-			LOG_ERROR("failed to get errno address");
+			puts("failed to get errno address");
 			return;
 		}
 	}
 	int err = 0;
 	read(pid, errno_addr, &err, sizeof(err));
-	LOG_DEBUG("%s: %s", msg, strerror(err));
+	printf("%s: %s\n", msg, strerror(err));
 }
 
 int Tracer::pipe(int *fildes) const noexcept {
@@ -279,7 +278,7 @@ int Tracer::dynlib_load_prx(const char *path, int *handle) const noexcept {
     jmp.rsi(0);
     jmp.rdx(h);
     int err = static_cast<int>(syscall(backup, jmp));
-	LOG_DEBUG("err: %i", err);
+	printf("err: %i\n", err);
     if (err != 0) {
         return err;
     }
