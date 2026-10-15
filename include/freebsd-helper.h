@@ -2,6 +2,17 @@
 #define __FREEBSD_HELPER_H__
 #pragma once
 
+/*
+ * The TYPE_BEGIN/TYPE_FIELD offset-mapping macros below expand to anonymous
+ * structs inside an anonymous union plus a zero-length array — deliberate GNU
+ * extensions. Silence exactly those three for this header instead of pulling
+ * the whole shared include tree in as -isystem, which hid every warning in it.
+ */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-anonymous-struct"
+#pragma clang diagnostic ignored "-Wnested-anon-types"
+#pragma clang diagnostic ignored "-Wzero-length-array"
+
 #include <stdint.h>
 #include <sys/types.h>
 #include "sparse.h"
@@ -45,12 +56,24 @@
 #define EINVAL 22
 // #define ENOTSUP 45
 
+/* Same values as the SDK's sys/mman.h; only defined for sources that do not
+ * pull that header in. Guarded so including both is not a redefinition. */
+#ifndef PROT_READ
 #define PROT_READ       0x1     /* Page can be read.  */
+#endif
+#ifndef PROT_WRITE
 #define PROT_WRITE      0x2     /* Page can be written.  */
+#endif
+#ifndef PROT_EXEC
 #define PROT_EXEC       0x4     /* Page can be executed.  */
+#endif
+#ifndef PROT_NONE
 #define PROT_NONE       0x0     /* Page can not be accessed.  */
+#endif
 
+#ifndef TRACEBUF
 #define TRACEBUF        struct qm_trace trace;
+#endif
 
 #define TAILQ_EMPTY(head) ((head)->tqh_first == NULL)
 #define TAILQ_FIRST(head) ((head)->tqh_first)
@@ -286,5 +309,7 @@ struct kinfo_proc {
 	long	ki_sflag;		/* PS_* flags */
 	long	ki_tdflags;		/* XXXKSE kthread flag */
 };
+
+#pragma clang diagnostic pop
 
 #endif

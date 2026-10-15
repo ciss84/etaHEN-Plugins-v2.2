@@ -6,7 +6,6 @@
 #include "ps5/mdbg.h"
 #include "ps5/nid.h"
 #include "nid.h"
-#include "hello_world.h"
 #include "ucred.h"
 
 #include <stdbool.h>

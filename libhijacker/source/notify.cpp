@@ -1,3 +1,4 @@
+#include <onion/log.h>
 #include "notify.hpp"
 
 void printf_notification(const char *fmt, ...)
@@ -23,5 +24,5 @@ void printf_notification(const char *fmt, ...)
 	{
 		noti_buffer.message[len - 1] = '\0';
 	}
-	printf("Sent notification: 0x%08x with message:\n%s\n", sceKernelSendNotificationRequest(0, (OrbisNotificationRequest *)&noti_buffer, sizeof(noti_buffer), 0), noti_buffer.message);
+	LOG_DEBUG("Sent notification: 0x%08x with message:\n%s", sceKernelSendNotificationRequest(0, (OrbisNotificationRequest *)&noti_buffer, sizeof(noti_buffer), 0), noti_buffer.message);
 }
