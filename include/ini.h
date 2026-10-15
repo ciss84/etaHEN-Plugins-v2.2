@@ -42,7 +42,7 @@ typedef struct {
 #include <ctype.h>
 #include <fcntl.h>
 
-static void trim(char* str) {
+static inline void trim(char* str) {
     char* end = 0;
     // Trim leading space
     while (isspace((unsigned char)*str)) str++;
@@ -56,7 +56,7 @@ static void trim(char* str) {
     // Write new null terminator
     *(end + 1) = 0;
 }
-static char* my_strchr(const char* str, int c) {
+static inline char* my_strchr(const char* str, int c) {
     while (*str != '\0') {
         if (*str == (char)c) {
             return (char*)str;
@@ -65,7 +65,7 @@ static char* my_strchr(const char* str, int c) {
     }
     return NULL;
 }
-static int ini_parser_load(IniParser* parser, const char* filename) {
+static inline int ini_parser_load(IniParser* parser, const char* filename) {
     int fd = open(filename, O_RDONLY, 0);
     if (fd < 0) {
         return 0;
@@ -131,7 +131,7 @@ static int ini_parser_load(IniParser* parser, const char* filename) {
 }
 
 
-static const char* ini_parser_get(IniParser* parser, const char* key, const char* default_value) {
+static inline const char* ini_parser_get(IniParser* parser, const char* key, const char* default_value) {
     for (int i = 0; i < parser->count; i++) {
         if (strcmp(parser->pairs[i].key, key) == 0) {
             return parser->pairs[i].value;
