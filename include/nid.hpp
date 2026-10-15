@@ -80,8 +80,13 @@ static inline constexpr Nid sceKernelDebugOutText("9JYNqN6jAKI");
 static inline constexpr Nid sceKernelGetFsSandboxRandomWord("JGfTMBOdUJo");
 static inline constexpr Nid open("wuCroIGjt2g");
 
+static inline constexpr Nid ioctl("PfccT7qURYE");
+static inline constexpr Nid getpid("HoLVWNanBBc"); 
 
+static inline constexpr Nid gettimeofday("n88vx3C5nW8");
 static inline constexpr Nid sceKernelSendNotificationRequest("zl7hupSO0C0");
+
+static inline constexpr Nid sceGnmSubmitAndFlipCommandBuffersForWorkload("Ga6r7H6Y0RI");
 
 
 static inline constexpr Nid mono_get_root_domain{"5a8b+s6HtaA"};
