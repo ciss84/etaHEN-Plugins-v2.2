@@ -173,35 +173,41 @@ static int sys_ptrace(int req, pid_t pid, caddr_t addr, int data)
     return ret;
 }
 
-// waitpid bloquant — attend indéfiniment, utilisé dans pt_step et pt_call
-// (même comportement que le ploader original)
-static int pt_wait(pid_t pid, int *status)
-{
-    int st = 0;
-    if (!status) status = &st;
-    pid_t res = waitpid(pid, status, 0); // bloquant, pas de timeout
-    return (res == pid) ? 0 : -1;
-}
-
-// waitpid avec timeout — uniquement pour pt_attach (où on veut détecter
-// rapidement si le process n'existe pas encore)
+// waitpid avec timeout (WNOHANG + poll 10ms)
 static int waitpid_timeout(pid_t pid, int *status, int ms)
 {
     for (int i = 0; i < ms / 10; i++) {
         pid_t res = waitpid(pid, status, WNOHANG);
         if (res == pid) return  1;
-        if (res <   0)  return -1;
+        if (res <   0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
         usleep(10000);
     }
     return 0;
 }
 
+// Attente bornée d'un stop du process tracé (utilisé par pt_syscall / pt_call).
+// Un wait infini + process arrêté = jeu gelé ET loader bloqué : on borne toujours.
+static int pt_wait(pid_t pid, int *status, int ms)
+{
+    int st = 0;
+    if (!status) status = &st;
+    return (waitpid_timeout(pid, status, ms) > 0) ? 0 : -1;
+}
+
 static int pt_attach(pid_t pid)
 {
     for (int i = 0; i < 5; i++) {
-        if (sys_ptrace(PT_ATTACH, pid, 0, 0) == 0 &&
-            waitpid_timeout(pid, nullptr, 2000) > 0)
-            return 0;
+        if (sys_ptrace(PT_ATTACH, pid, 0, 0) == 0) {
+            if (waitpid_timeout(pid, nullptr, 2000) > 0)
+                return 0;
+            // attach OK mais pas de stop reçu : ne PAS laisser le process tracé
+            sys_ptrace(PT_DETACH, pid, (caddr_t)1, 0);
+            usleep(300000);
+            continue;
+        }
         if (errno == ESRCH)
             usleep(500000);
         else
@@ -277,20 +283,25 @@ static long pt_syscall(pid_t pid, int sysno,
     jmp.r_rdi = a1; jmp.r_rsi = a2; jmp.r_rdx = a3;
     jmp.r_r10 = a4; jmp.r_r8  = a5; jmp.r_r9  = a6;
 
-    if (pt_setregs(pid, &jmp)) return -1;
+    if (pt_setregs(pid, &jmp)) { pt_setregs(pid, &bak); return -1; }
 
-    // PT_STEP jusqu'au retour du syscall (RSP revenu à sa valeur initiale)
-    // Bloquant comme le ploader — pas de timeout artificiel
-    for (;;) {
+    // PT_STEP jusqu'au retour du syscall (RSP > RSP initial).
+    // Borné (10000 pas, 1s par pas) : si l'offset +0xA est faux sur une FW,
+    // on abandonne proprement au lieu de geler le jeu et le loader.
+    bool done = false;
+    for (int i = 0; i < 10000; i++) {
+        int status = 0;
         if (sys_ptrace(PT_STEP, pid, (caddr_t)1, 0) ||
-            pt_wait(pid, nullptr))
-            return -1;
-        if (pt_getregs(pid, &jmp)) return -1;
-        if (jmp.r_rsp > bak.r_rsp) break;
+            pt_wait(pid, &status, 1000) ||
+            !WIFSTOPPED(status) ||
+            pt_getregs(pid, &jmp))
+            break;
+        if (jmp.r_rsp > bak.r_rsp) { done = true; break; }
     }
 
+    long ret = done ? (long)jmp.r_rax : -1;
     pt_setregs(pid, &bak);
-    return jmp.r_rax;
+    return ret;
 }
 
 static intptr_t pt_mmap(pid_t pid, intptr_t addr, size_t len,
@@ -305,36 +316,51 @@ static int pt_munmap(pid_t pid, intptr_t addr, size_t len)
 }
 
 // Appel de fonction dans le process cible.
-// Installe les registres, fait PT_CONTINUE, attend INT3 (SIGTRAP), retourne RAX.
-static long pt_call(pid_t pid, intptr_t fn,
+// `trap` = adresse (dans le process cible) d'un octet 0xCC : elle est poussée
+// comme adresse de retour, donc quand `fn` fait `ret` on s'arrête sur INT3
+// (SIGTRAP) et on lit RAX. Sans ça, `fn` retournerait dans du code aléatoire
+// du jeu (contrairement au shellcode du ploader qui contient lui-même le 0xCC).
+static long pt_call(pid_t pid, intptr_t fn, intptr_t trap,
                      uint64_t a1, uint64_t a2, uint64_t a3,
                      uint64_t a4, uint64_t a5, uint64_t a6)
 {
     struct reg jmp, bak;
+    if (!fn || !trap) return -1;
     if (pt_getregs(pid, &bak)) return -1;
 
+    // Sauter la red zone (128o) puis aligner : à l'entrée d'une fonction
+    // SysV, (rsp + 8) % 16 == 0, avec l'adresse de retour à [rsp].
+    uint64_t sp = ((bak.r_rsp - 0x200) & ~0xFULL) - 8;
+    uint64_t ra = (uint64_t)trap;
+    if (pt_copyin(pid, &ra, (intptr_t)sp, sizeof(ra)) < 0) return -1;
+
     jmp       = bak;
+    jmp.r_rsp = sp;
     jmp.r_rip = fn;
     jmp.r_rdi = a1; jmp.r_rsi = a2; jmp.r_rdx = a3;
     jmp.r_rcx = a4; jmp.r_r8  = a5; jmp.r_r9  = a6;
 
-    if (pt_setregs(pid, &jmp)) return -1;
+    if (pt_setregs(pid, &jmp)) { pt_setregs(pid, &bak); return -1; }
 
-    sys_ptrace(PT_CONTINUE, pid, (caddr_t)1, 0);
+    if (sys_ptrace(PT_CONTINUE, pid, (caddr_t)1, 0) < 0) {
+        pt_setregs(pid, &bak);
+        return -1;
+    }
 
-    // Bloquant — sceKernelLoadStartModule peut prendre plusieurs secondes
-    // selon la taille du PRX et l'état d'initialisation du jeu
+    // pthread_create rend la main en quelques ms ; 10s est très large.
     int status = 0;
-    if (pt_wait(pid, &status) ||
+    if (pt_wait(pid, &status, 10000) ||
         !WIFSTOPPED(status) || WSTOPSIG(status) != SIGTRAP)
     {
         pt_setregs(pid, &bak);
         return -1;
     }
 
-    if (pt_getregs(pid, &jmp)) return -1;
+    long ret = -1;
+    if (pt_getregs(pid, &jmp) == 0)
+        ret = (long)jmp.r_rax;
     pt_setregs(pid, &bak);
-    return jmp.r_rax;
+    return ret;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -461,8 +487,17 @@ static int inject_prx(pid_t pid, const char *prx_path)
     kernel_mprotect(pid, code_page, INJ_PAGE_SIZE,
                     PROT_READ | PROT_WRITE | PROT_EXEC);
 
+    // Octet INT3 servant d'adresse de retour à pt_call (après le stub, même page RWX)
+    const intptr_t trap_addr = code_page + 0x800;
+    const uint8_t  int3      = 0xCC;
+    if (pt_copyin(pid, &int3, trap_addr, 1) < 0) {
+        plugin_log("[INJ] écriture INT3 échouée");
+        free_pages();
+        return -1;
+    }
+
     // pthread_create(&thread, NULL, stub, ctx)
-    long trc = pt_call(pid, pthr_fn, (uint64_t)thread_page, 0,
+    long trc = pt_call(pid, pthr_fn, trap_addr, (uint64_t)thread_page, 0,
                        (uint64_t)code_page, (uint64_t)ctx_page, 0, 0);
     if (trc != 0) {
         plugin_log("[INJ] pthread_create échoué (rc=%ld)", trc);
@@ -954,7 +989,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.02 By @84Ciss",
+    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.01 By @84Ciss",
                         fw_major, fw_minor);
     plugin_log("Surveillance SceSysCore.elf (pid %d)...", syscore_pid);
 
