@@ -1,13 +1,20 @@
 # Copier dans /data/PluginLoader/PluginLoader.toml
 # path relatif => /data/PluginLoader/<path>  (chemin absolu accepté)
 
+;[[plugin]]
+;title    = "CUSA00411"
+;path     = "prx/BeachMenu.prx"
+;delay_ms = 10000      # défaut 10000
+;inject   = true
+
 [[plugin]]
-title    = "CUSA01234"
+title    = "CUSA00419"
 path     = "prx/BeachMenu.prx"
 delay_ms = 10000      # défaut 10000
 inject   = true
 
 [[plugin]]
-title    = "PPSA01234"
-path     = "autre.prx"
+title    = "PPSA04264"
+path     = "prx/FullBeachMenu-1.011.001.prx"
+delay_ms = 10000      # défaut 10000
 fakelib  = true       # optionnel, PPSA seulement (défaut true)

@@ -858,7 +858,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[PT] Délai entre retry: %dms (delay_ms du PluginLoader.toml)", delay_ms);
 
         // Attente initiale minimale — laisser dynld charger libkernel
-        usleep(500000); // 500ms toujours, pour éviter pt_resolve = 0
+        usleep(750000); // 500ms toujours, pour éviter pt_resolve = 0
 
         // jb du loader (accès /data)
         jb_pid(getpid());
