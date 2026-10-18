@@ -844,18 +844,18 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
     // ── ② Attente + injection avec retry
     //  On essaie d'injecter dès que le process est prêt (handle > 0).
-    //  La valeur ':' dans l'INI devient le délai entre chaque tentative (ms).
+    //  delay_ms (PluginLoader.toml) devient le délai entre chaque tentative (ms).
     //  Si handle < 0 → on attend delay_ms et on réessaie (max 60 tentatives = ~1 min).
     //  Dès que handle > 0 → PRX chargé, on passe au suivant.
     {
-        // Délai entre retry = valeur ':' dans l'INI (en ms), max de tous les PRX
+        // Délai entre retry = delay_ms du TOML, max de tous les PRX
         // Défaut si non spécifié : 1000ms
         int delay_ms = 1000;
         for (const auto &prx : prx_list)
             if (prx.delay_ms > delay_ms)
                 delay_ms = prx.delay_ms;
 
-        plugin_log("[PT] Délai entre retry: %dms (valeur ':' dans l'INI)", delay_ms);
+        plugin_log("[PT] Délai entre retry: %dms (delay_ms du PluginLoader.toml)", delay_ms);
 
         // Attente initiale minimale — laisser dynld charger libkernel
         usleep(500000); // 500ms toujours, pour éviter pt_resolve = 0

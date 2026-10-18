@@ -2,7 +2,7 @@
 // Nettoyé : suppression de tout le code PLT hook (GameStuff, GameBuilder,
 // BUILDER_TEMPLATE, BUILDER_TEMPLATE_AUTO, HookGame, OrbisPad*).
 // L'injection est maintenant purement ptrace dans main.cpp.
-// On garde : patch_shellcore, INI parser, plugin_log, Is_Game_Running.
+// On garde : patch_shellcore, TOML parser, plugin_log, Is_Game_Running.
 
 #pragma once
 
@@ -27,7 +27,7 @@
 #include <vector>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Structures de configuration (INI parser)
+//  Structures de configuration (TOML parser)
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct PRXConfig {
