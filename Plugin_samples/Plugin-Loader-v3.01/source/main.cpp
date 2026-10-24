@@ -408,6 +408,57 @@ static int jb_pid(pid_t pid)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Snapshot / restauration des credentials du jeu (restore_sandbox)
+//  Sans restauration, le jeu garde pour toujours authid SYSTEM, caps = -1 et
+//  rootdir/jaildir = root vnode → comportement instable / crash selon le timing.
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct CredSnap {
+    uint32_t uid, ruid, svuid, ngroups, rgid, svgid;
+    uint64_t authid, caps0, caps1;
+    uint8_t  attr;
+    intptr_t rootdir, jaildir;
+};
+
+static uint32_t ucred_attr_off() { return (g_fw_version >= 0x08000000u) ? 0x88u : 0x83u; }
+
+static int save_creds(intptr_t ucred, CredSnap *o, pid_t pid)
+{
+    if (!ucred || !o || pid <= 1) return -1;
+    if (kernel_copyout(ucred + UCRED_UID,     &o->uid,     4) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_RUID,    &o->ruid,    4) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_SVUID,   &o->svuid,   4) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_NGROUPS, &o->ngroups, 4) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_RGID,    &o->rgid,    4) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_SVGID,   &o->svgid,   4) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_AUTHID,  &o->authid,  8) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_CAPS0,   &o->caps0,   8) < 0) return -1;
+    if (kernel_copyout(ucred + UCRED_CAPS1,   &o->caps1,   8) < 0) return -1;
+    if (kernel_copyout(ucred + ucred_attr_off(), &o->attr, 1) < 0) return -1;
+    o->rootdir = kernel_get_proc_rootdir(pid);
+    o->jaildir = kernel_get_proc_jaildir(pid);
+    return (o->rootdir && o->jaildir) ? 0 : -1;
+}
+
+static int restore_creds(intptr_t ucred, const CredSnap *o, pid_t pid)
+{
+    if (!ucred || !o || pid <= 1) return -1;
+    if (kernel_copyin(&o->uid,     ucred + UCRED_UID,     4) < 0) return -1;
+    if (kernel_copyin(&o->ruid,    ucred + UCRED_RUID,    4) < 0) return -1;
+    if (kernel_copyin(&o->svuid,   ucred + UCRED_SVUID,   4) < 0) return -1;
+    if (kernel_copyin(&o->ngroups, ucred + UCRED_NGROUPS, 4) < 0) return -1;
+    if (kernel_copyin(&o->rgid,    ucred + UCRED_RGID,    4) < 0) return -1;
+    if (kernel_copyin(&o->svgid,   ucred + UCRED_SVGID,   4) < 0) return -1;
+    if (kernel_copyin(&o->authid,  ucred + UCRED_AUTHID,  8) < 0) return -1;
+    if (kernel_copyin(&o->caps0,   ucred + UCRED_CAPS0,   8) < 0) return -1;
+    if (kernel_copyin(&o->caps1,   ucred + UCRED_CAPS1,   8) < 0) return -1;
+    if (kernel_copyin(&o->attr,    ucred + ucred_attr_off(), 1) < 0) return -1;
+    kernel_set_proc_rootdir(pid, o->rootdir);
+    kernel_set_proc_jaildir(pid, o->jaildir);
+    return 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  inject_prx — injection ptrace d'un seul PRX dans le process cible
 //  (méthode HYPERHEN : pthread transitoire, ne bloque pas le jeu)
 //
@@ -524,15 +575,23 @@ static int inject_prx(pid_t pid, const char *prx_path)
         usleep(INJ_POLL_MS * 1000);
     }
 
-    // Ré-attacher (contrat : attaché en sortie) puis lire le résultat
-    if (!IsProcessRunning(pid) || pt_attach(pid) < 0) {
-        plugin_log("[INJ] ré-attache impossible — pages temporaires conservées");
-        return loaded ? handle : -1;
-    }
-
+    // Ré-attacher (contrat : attaché en sortie) puis lire le résultat.
+    // Le handle apparaît dès le mapping, AVANT la fin de module_start : on attend
+    // que le thread ait terminé (max ~10 s) pour ne pas restaurer les creds trop tôt.
     RemoteCtx fin;
     fin.result = CTX_PENDING;
-    bool read_ok = pt_copyout(pid, ctx_page, &fin, sizeof(fin)) == 0;
+    bool read_ok = false;
+    for (int i = 0; i < 20; i++) {
+        if (!IsProcessRunning(pid) || pt_attach(pid) < 0) {
+            plugin_log("[INJ] ré-attache impossible — pages temporaires conservées");
+            return loaded ? handle : -1;
+        }
+        read_ok = pt_copyout(pid, ctx_page, &fin, sizeof(fin)) == 0;
+        if (read_ok && fin.result != CTX_PENDING) break;
+        if (i == 19) break;            // on sort attaché (contrat)
+        pt_detach(pid);
+        usleep(500000);
+    }
     if (read_ok && fin.result != CTX_PENDING) {
         plugin_log("[INJ] sceKernelLoadStartModule → 0x%lx", (long)fin.result);
         if (!loaded && fin.result > 0 && fin.result < 0x7fffffff) {
@@ -898,14 +957,34 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     continue;
                 }
 
+                intptr_t ucred = kernel_get_proc_ucred(pid);
+                CredSnap snap{};
+                if (!ucred || save_creds(ucred, &snap, pid) != 0) {
+                    plugin_log("[RETRY] snapshot credentials échoué");
+                    pt_detach(pid);
+                    usleep(RETRY_INTERVAL_MS * 1000);
+                    continue;
+                }
+
                 if (jb_pid(pid) != 0) {
                     plugin_log("[RETRY] jb_pid échoué");
+                    restore_creds(ucred, &snap, pid);
                     pt_detach(pid);
                     usleep(RETRY_INTERVAL_MS * 1000);
                     continue;
                 }
 
                 mod = inject_prx(pid, prx.path.c_str());
+
+                if (prx.restore_sandbox || mod <= 0) {
+                    if (restore_creds(ucred, &snap, pid) != 0)
+                        plugin_log("[RETRY] restauration credentials ÉCHOUÉE");
+                    else
+                        plugin_log("[RETRY] credentials restaurés (restore_sandbox=%d, mod=%d)",
+                                   (int)prx.restore_sandbox, mod);
+                } else {
+                    plugin_log("[RETRY] restore_sandbox=false → creds jailbreak conservés");
+                }
 
                 pt_detach(pid);
 

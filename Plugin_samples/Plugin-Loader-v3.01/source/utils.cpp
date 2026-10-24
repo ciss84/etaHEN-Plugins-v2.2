@@ -126,6 +126,8 @@ struct PendingPlugin {
     bool        inject      = true;
     bool        has_fakelib = false;
     bool        fakelib     = true;
+    bool        has_restore = false;
+    bool        restore     = true;
 };
 
 static void flush_plugin(PendingPlugin &p, GameInjectorConfig &config)
@@ -153,8 +155,9 @@ static void flush_plugin(PendingPlugin &p, GameInjectorConfig &config)
     PRXConfig prx;
     prx.path     = (p.path[0] == '/') ? p.path : std::string(PL_CONFIG_DIR) + p.path;
     prx.delay_ms = p.delay_ms;
+    prx.restore_sandbox = p.has_restore ? p.restore : config.default_restore;
     config.games[p.title].push_back(prx);
-    plugin_log("Config: [%s] → %s (delay %dms)", p.title.c_str(), prx.path.c_str(), prx.delay_ms);
+    plugin_log("Config: [%s] → %s (delay %dms, restore_sandbox=%d)", p.title.c_str(), prx.path.c_str(), prx.delay_ms, (int)prx.restore_sandbox);
 }
 
 GameInjectorConfig parse_injector_config()
@@ -187,6 +190,7 @@ GameInjectorConfig parse_injector_config()
 
     PendingPlugin pend;
     bool in_plugin = false;
+    bool in_loader = false;
     size_t pos = 0;
 
     while (pos <= data.size()) {
@@ -205,6 +209,7 @@ GameInjectorConfig parse_injector_config()
             pend = PendingPlugin();
             std::string name = toml_trim(line.substr(2, line.size() - 4));
             in_plugin = (name == "plugin");
+            in_loader = false;
             pend.active = in_plugin;
             continue;
         }
@@ -213,6 +218,16 @@ GameInjectorConfig parse_injector_config()
             flush_plugin(pend, config);
             pend = PendingPlugin();
             in_plugin = false;
+            in_loader = (toml_trim(line.substr(1, line.size() - 2)) == "loader");
+            continue;
+        }
+
+        if (in_loader) {
+            size_t leq = line.find('=');
+            if (leq != std::string::npos &&
+                toml_trim(line.substr(0, leq)) == "default_restore_sandbox") {
+                bool b; if (toml_bool(line.substr(leq + 1), b)) config.default_restore = b;
+            }
             continue;
         }
 
@@ -232,6 +247,7 @@ GameInjectorConfig parse_injector_config()
             else plugin_log("Config: delay_ms invalide '%s'", val.c_str());
         }
         else if (key == "inject")   { bool b; if (toml_bool(val, b)) pend.inject  = b; }
+        else if (key == "restore_sandbox") { bool b; if (toml_bool(val, b)) { pend.restore = b; pend.has_restore = true; } }
         else if (key == "fakelib")  { bool b; if (toml_bool(val, b)) { pend.fakelib = b; pend.has_fakelib = true; } }
     }
     flush_plugin(pend, config);

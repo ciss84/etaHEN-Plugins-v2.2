@@ -1,4 +1,6 @@
 # Copier dans /data/PluginLoader/PluginLoader.toml
+# [loader] est optionnel :  default_restore_sandbox = true
+# restore_sandbox (par plugin, défaut true) : restaure ucred/rootdir/jaildir du jeu après injection
 # path relatif => /data/PluginLoader/<path>  (chemin absolu accepté)
 
 [[plugin]]

@@ -32,13 +32,14 @@
 
 struct PRXConfig {
     std::string path;
-    int delay_ms;   // valeur après ':' dans l'INI, interprétée en millisecondes
-                    // ex: prx/BeachMenu.prx:10000  → attendre 10s avant injection
+    int delay_ms;   // délai (ms) depuis le lancement du jeu avant la 1re tentative
+    bool restore_sandbox = true; // restaurer ucred/rootdir/jaildir du jeu après injection
 };
 
 struct GameInjectorConfig {
     std::map<std::string, std::vector<PRXConfig>> games;
     std::map<std::string, bool>                   fakelib_enabled;
+    bool                                          default_restore = true; // [loader] default_restore_sandbox
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
