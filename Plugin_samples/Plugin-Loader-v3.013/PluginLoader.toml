@@ -1,0 +1,19 @@
+[loader]
+timeout_s = 120
+scan_existing = true
+default_inject = true
+default_restore_sandbox = true
+
+[[plugin]]
+title = "PPSA04264"
+path = "/data/PluginLoader/prx/FullBeachMenu-1.011.001.prx=true"
+delay_ms = 60
+inject = true
+restore_sandbox = true
+
+;[[plugin]]
+;title = "CUSA01234"
+;path = "/data/plugins/my_other.sprx"
+;delay_ms = 5000
+;inject = true
+;restore_sandbox = true
