@@ -863,6 +863,14 @@ static void inject_into_game(pid_t pid, const char *title_id,
             const char *basename = strrchr(prx.path.c_str(), '/');
             basename = basename ? basename + 1 : prx.path.c_str();
 
+            // Fichier absent ? On ne touche surtout pas au jeu (pas de ptrace).
+            if (access(prx.path.c_str(), R_OK) != 0) {
+                plugin_log("[INJ] PRX introuvable: '%s' (errno %d) — injection annulée, jeu non touché",
+                           prx.path.c_str(), errno);
+                printf_notification("Plugin Loader: PRX introuvable!\n%s", basename);
+                continue;
+            }
+
             // Attendre que delay_ms se soit écoulé depuis le lancement du jeu,
             // SANS toucher au process (pas de ptrace pendant le boot).
             plugin_log("[PT] %s — délai initial %dms depuis le lancement", basename, prx.delay_ms);
