@@ -8,6 +8,7 @@
 
 #include "utils.hpp"
 #include <notify.hpp>
+#include <time.h>
 #include <signal.h>
 #include <string>
 #include <ps5/kernel.h>
@@ -843,22 +844,16 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── ② Attente + injection avec retry
-    //  On essaie d'injecter dès que le process est prêt (handle > 0).
-    //  delay_ms (PluginLoader.toml) devient le délai entre chaque tentative (ms).
-    //  Si handle < 0 → on attend delay_ms et on réessaie (max 60 tentatives = ~1 min).
-    //  Dès que handle > 0 → PRX chargé, on passe au suivant.
+    //  delay_ms (PluginLoader.toml) = délai INITIAL avant la 1re tentative,
+    //  compté depuis le lancement du jeu (comme l'ancien "prx:10000" de l'INI).
+    //  Si l'injection échoue (libkernel pas prêt, etc.), on réessaie toutes
+    //  les RETRY_INTERVAL_MS, max 60 tentatives.
     {
-        // Délai entre retry = delay_ms du TOML, max de tous les PRX
-        // Défaut si non spécifié : 1000ms
-        int delay_ms = 1000;
-        for (const auto &prx : prx_list)
-            if (prx.delay_ms > delay_ms)
-                delay_ms = prx.delay_ms;
-
-        plugin_log("[PT] Délai entre retry: %dms (delay_ms du PluginLoader.toml)", delay_ms);
+        const int RETRY_INTERVAL_MS = 1000;
+        const time_t t_start = time(nullptr);
 
         // Attente initiale minimale — laisser dynld charger libkernel
-        usleep(750000); // 500ms toujours, pour éviter pt_resolve = 0
+        usleep(750000);
 
         // jb du loader (accès /data)
         jb_pid(getpid());
@@ -868,6 +863,19 @@ static void inject_into_game(pid_t pid, const char *title_id,
             const char *basename = strrchr(prx.path.c_str(), '/');
             basename = basename ? basename + 1 : prx.path.c_str();
 
+            // Attendre que delay_ms se soit écoulé depuis le lancement du jeu,
+            // SANS toucher au process (pas de ptrace pendant le boot).
+            plugin_log("[PT] %s — délai initial %dms depuis le lancement", basename, prx.delay_ms);
+            bool gone = false;
+            while ((long)(time(nullptr) - t_start) * 1000 < (long)prx.delay_ms) {
+                if (!IsProcessRunning(pid)) { gone = true; break; }
+                usleep(250000);
+            }
+            if (gone) {
+                plugin_log("[RETRY] process %d disparu pendant le délai, abandon", pid);
+                break;
+            }
+
             int  mod     = -1;
             int  attempt = 0;
 
@@ -876,21 +884,19 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 attempt++;
                 plugin_log("[RETRY] %s — tentative %d/60", basename, attempt);
 
-                // Attacher
                 if (pt_attach(pid) < 0) {
-                    plugin_log("[RETRY] pt_attach échoué, attente %dms...", delay_ms);
-                    usleep(delay_ms * 1000);
+                    plugin_log("[RETRY] pt_attach échoué, attente %dms...", RETRY_INTERVAL_MS);
+                    usleep(RETRY_INTERVAL_MS * 1000);
                     continue;
                 }
 
                 if (jb_pid(pid) != 0) {
                     plugin_log("[RETRY] jb_pid échoué");
                     pt_detach(pid);
-                    usleep(delay_ms * 1000);
+                    usleep(RETRY_INTERVAL_MS * 1000);
                     continue;
                 }
 
-                // Tentative d'injection
                 mod = inject_prx(pid, prx.path.c_str());
 
                 pt_detach(pid);
@@ -900,18 +906,17 @@ static void inject_into_game(pid_t pid, const char *title_id,
                                basename, mod, attempt);
                 } else {
                     plugin_log("[RETRY] handle %d — attente %dms avant retry",
-                               mod, delay_ms);
-                    // Sortir si le process n'existe plus (jeu crashé / fermé)
+                               mod, RETRY_INTERVAL_MS);
                     if (!IsProcessRunning(pid)) {
                         plugin_log("[RETRY] process %d disparu, abandon", pid);
                         break;
                     }
-                    usleep(delay_ms * 1000);
+                    usleep(RETRY_INTERVAL_MS * 1000);
                 }
             }
 
             if (mod <= 0)
-                plugin_log("[RETRY] ECHEC définitif: %s après 60 tentatives", basename);
+                plugin_log("[RETRY] ECHEC définitif: %s après %d tentatives", basename, attempt);
         }
     }
 
