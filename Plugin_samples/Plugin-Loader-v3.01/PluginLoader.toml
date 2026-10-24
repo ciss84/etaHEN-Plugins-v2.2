@@ -1,28 +1,19 @@
-# Copier dans /data/PluginLoader/PluginLoader.toml
-# path relatif => /data/PluginLoader/<path>  (chemin absolu accepté)
+[loader]
+timeout_s = 120
+scan_existing = true
+default_inject = true
+default_restore_sandbox = true
 
 [[plugin]]
-title    = "CUSA00411"
-path     = "prx/BeachMenu157.prx"
-delay_ms = 10000      # défaut 10000
-inject   = true       # false = ignoré
+title = "PPSA04264"
+path = "/data/PluginLoader/prx/FullBeachMenu-1.011.001.prx=true"
+delay_ms = 60
+inject = true
+restore_sandbox = true
 
-[[plugin]]
-title    = "CUSA00419"
-path     = "prx/BeachMenu157.prx"
-delay_ms = 10000      # défaut 10000
-inject   = true       # false = ignoré
-
-[[plugin]]
-title    = "PPSA04263"
-path     = "prx/FullBeachMenu-1.011.001.prx"
-delay_ms = 10000      # défaut 10000
-inject   = true       # false = ignoré
-fakelib  = true       # optionnel, PPSA seulement (défaut true)
-
-[[plugin]]
-title    = "PPSA04264"
-path     = "prx/FullBeachMenu-1.011.001.prx"
-delay_ms = 10000      # défaut 10000
-inject   = true       # false = ignoré
-fakelib  = true       # optionnel, PPSA seulement (défaut true)
+;[[plugin]]
+;title = "CUSA01234"
+;path = "/data/plugins/my_other.sprx"
+;delay_ms = 5000
+;inject = true
+;restore_sandbox = true
