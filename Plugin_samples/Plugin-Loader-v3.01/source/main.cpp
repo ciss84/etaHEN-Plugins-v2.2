@@ -1,4 +1,4 @@
-// Plugin-Loader v3.01 — by @84Ciss
+// Plugin-Loader v3.02 — by @84Ciss
 // Fusion: ptrace injection (ploader approach) + kqueue detection (v2.02)
 //         + fakelib/unionfs + multi-PRX + patch_shellcore
 //
@@ -1023,7 +1023,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== SHADOW PRX TROPHEE BACKPORK LOADER v3.01 ===");
+    plugin_log("=== SHADOW PRX TROPHEE BACKPORK LOADER v3.02 ===");
 
     // Initialisation kernel
     payload_args_t *args = payload_get_args();
@@ -1081,7 +1081,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.01 By @84Ciss",
+    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.02 By @84Ciss",
                         fw_major, fw_minor);
     plugin_log("Surveillance SceSysCore.elf (pid %d)...", syscore_pid);
 
