@@ -20,9 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Download SDK v0.44
+    - name: Download SDK v0.45
       run: |
-        echo "SDK release: v0.44"
+        echo "SDK release: v0.45"
         curl -L "https://github.com/ps5-payload-dev/sdk/releases/download/v0.45/ps5-payload-sdk.zip" -o ps5-sdk.zip
         mkdir -p ${{ runner.tool_cache }}/ps5-payload-sdk
         unzip ps5-sdk.zip -d ${{ runner.tool_cache }}/ps5-payload-sdk
