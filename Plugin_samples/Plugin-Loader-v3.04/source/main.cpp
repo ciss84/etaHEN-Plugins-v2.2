@@ -1144,19 +1144,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
             bool gone = false;
             if ((long)(time(nullptr) - t_start) * 1000 < (long)prx.delay_ms) {
                 if (!IsProcessRunning(pid)) { gone = true; break; }
-                sceKernelPrepareToSuspendProcess(pid);
-                sceKernelSuspendProcess(pid);
                 usleep(250000);
             }
             if (gone) {
                 plugin_log("[RETRY] process %d disparu pendant le délai, abandon", pid);
                 break;
             }
-
-            // Final resume
-            usleep(500000);
-            sceKernelPrepareToResumeProcess(pid);
-            sceKernelResumeProcess(pid);
     
             int  mod     = -1;
             int  attempt = 0;
