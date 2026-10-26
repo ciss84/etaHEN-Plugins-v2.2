@@ -74,6 +74,14 @@ static constexpr uint32_t SC_V1220 = 0x12200000;
 static constexpr uint32_t SC_V1240 = 0x12400000;
 static constexpr uint32_t SC_V1260 = 0x12600000;
 static constexpr uint32_t SC_V1270 = 0x12700000;
+// 13.xx — constantes seulement : AUCUN pattern verifie dans les tables ci-dessous pour ces FW.
+// Ils passent par le mode secours (sc_lookup_patch_set : patterns 12.70 + match unique exige).
+// Pour ajouter une vraie entree 13.xx, il faut les octets de SceShellCore de ce firmware.
+static constexpr uint32_t SC_V1300 = 0x13000000;
+static constexpr uint32_t SC_V1320 = 0x13200000;
+static constexpr uint32_t SC_V1340 = 0x13400000;
+static constexpr uint32_t SC_V1342 = 0x13420000;
+static constexpr uint32_t SC_V1360 = 0x13600000;
 
 // ── Helpers internes ──────────────────────────────────────────────────────────
 
