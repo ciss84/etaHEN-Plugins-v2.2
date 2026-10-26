@@ -1203,6 +1203,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
                 pt_detach(pid);
 
+    // Final resume
+    usleep(500000);
+    sceKernelPrepareToResumeProcess(pid);
+    sceKernelResumeProcess(pid);
+
                 if (mod > 0) {
                     plugin_log("[RETRY] OK: %s (handle %d) à la tentative %d",
                                basename, mod, attempt);
@@ -1221,13 +1226,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 plugin_log("[RETRY] ECHEC définitif: %s après %d tentatives", basename, attempt);
         }
     }
-
-    // Final resume
-    usleep(500000);
-    sceKernelPrepareToResumeProcess(pid);
-    sceKernelResumeProcess(pid);
-
-    plugin_log("[PT] %d/%zu PRX injected", success_count, prx_list.size());
 
     // ── Attendre fermeture du jeu, puis cleanup fakelib ───────────────────
     plugin_log("[Wait] En attente fermeture jeu (pid %d)...", pid);
