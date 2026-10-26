@@ -5,7 +5,9 @@
 //  Porté depuis etaHEN (cpp_service.cpp / util daemon)
 //  A inclure depuis hijacker/patch_shellcore.hpp (via utils.hpp)
 //  IMPORTANT: inclure APRES hijacker/hijacker.hpp
-//  FW supportés : 4.xx → 12.xx
+//  FW supportés : 4.xx → 12.xx (table exacte)
+//                 13.xx et plus : patterns de la dernière entrée connue (secours, voir
+//                 sc_lookup_patch_set / sc_find_on_new_process) — non verifié sur binaire
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <stdint.h>
@@ -122,6 +124,52 @@ static uint8_t *sc_pattern_scan(const uint8_t *base, uint64_t size, const char *
 }
 
 // Identique à write_bytes() de cpp_service — dbg::write direct, pas de Hijacker
+// Nombre de correspondances d'un pattern (sert à exiger un match unique en mode secours)
+static int sc_pattern_count(const uint8_t *base, uint64_t size, const char *sig)
+{
+    uint8_t patternBytes[256];
+    memset(patternBytes, 0, sizeof(patternBytes));
+    int32_t patternLength = (int32_t)sc_pattern_to_byte(sig, patternBytes);
+    if (patternLength <= 0 || patternLength >= 256)
+        return 0;
+
+    int count = 0;
+    for (uint64_t i = 0; i + (uint64_t)patternLength <= size; ++i) {
+        bool found = true;
+        for (int32_t j = 0; j < patternLength; ++j) {
+            if (base[i + j] != patternBytes[j] && patternBytes[j] != 0xff) {
+                found = false;
+                break;
+            }
+        }
+        if (found && ++count > 1)
+            break;   // 2 suffit : on veut juste savoir si c'est unique
+    }
+    return count;
+}
+
+// Remplace le 4e octet du pattern (octet haut du rel32 d'un « e8 ?? ?? XX 00 ») par un joker.
+// Cet octet change d'un FW à l'autre (ex. e2 -> e3 entre 12.60 et 12.70).
+static void sc_relax_4th_token(const char *pat, char *out, size_t outsz)
+{
+    size_t o = 0;
+    int tok = 0;
+    const char *p = pat;
+    while (*p && o + 4 < outsz) {
+        while (*p == ' ') { out[o++] = ' '; ++p; }
+        if (!*p) break;
+        const char *start = p;
+        while (*p && *p != ' ') ++p;
+        ++tok;
+        if (tok == 4) {
+            out[o++] = '?'; out[o++] = '?';
+        } else {
+            for (const char *c = start; c < p && o + 4 < outsz; ++c) out[o++] = *c;
+        }
+    }
+    out[o] = '\0';
+}
+
 static void sc_write_hex(pid_t pid, uint64_t addr, const char *hex)
 {
     uint8_t buf[64];
@@ -290,6 +338,33 @@ static const sc_patch_set sc_patch_table[] = {
     },
 };
 
+// ── Recherche du jeu de patterns pour un FW ──────────────────────────────────
+//  1) entrée dont la plage [fw_min, fw_max] contient le FW (comportement d'origine)
+//  2) sinon : entrée connue la plus proche en dessous (FW > dernière entrée, ex. 13.xx,
+//     ou FW tombant entre deux plages). Les patterns sont des signatures avec jokers :
+//     elles survivent souvent d'un FW à l'autre. Si elles ne matchent pas, le scan
+//     échoue proprement (« patterns non trouves ») et rien n'est écrit.
+//  Pas de scan « force brute » avec les patterns des autres FW : une mauvaise
+//  correspondance écrirait au mauvais endroit dans SceShellCore.
+static const sc_patch_set *sc_lookup_patch_set(uint32_t fw_masked, bool *fallback = nullptr)
+{
+    if (fallback) *fallback = false;
+    const sc_patch_set *floor_entry = nullptr;
+
+    for (const auto &e : sc_patch_table) {
+        if (fw_masked >= e.fw_min && fw_masked <= e.fw_max)
+            return &e;
+        if (e.fw_min <= fw_masked && (!floor_entry || e.fw_min > floor_entry->fw_min))
+            floor_entry = &e;
+    }
+
+    if (floor_entry && fallback) *fallback = true;
+    if (floor_entry)
+        plugin_log("[SC_PATCH] FW 0x%08x hors table exacte -> patterns de secours %08x-%08x (non verifie)",
+                   fw_masked, floor_entry->fw_min, floor_entry->fw_max);
+    return floor_entry;
+}
+
 // ── Table patterns onNewProcess (4.xx → 12.xx) ────────────────────────────────
 //  Portés depuis etaHEN patchOnNewProcess() ps5_patterns[].
 struct sc_newproc_pattern {
@@ -396,8 +471,19 @@ static const sc_getappinfo_pattern sc_getappinfo_table[] = {
 static uintptr_t sc_find_on_new_process(uintptr_t sc_base, uint64_t sc_size,
                                         const uint8_t *copy, uint32_t fw_masked)
 {
+    // FW au-dessus de la dernière plage connue (13.xx+) : on réutilise la dernière entrée.
+    uint32_t last_max = 0;
+    for (const auto& e : sc_newproc_table)
+        if (e.fw_max > last_max) last_max = e.fw_max;
+    const bool beyond_table = fw_masked > last_max;
+    if (beyond_table)
+        plugin_log("[SC_NEWPROC] FW 0x%08x au-dela de la table -> patterns de la derniere entree (non verifie)",
+                   fw_masked);
+
     for (const auto& e : sc_newproc_table) {
-        if (fw_masked < e.fw_min || fw_masked > e.fw_max) continue;
+        const bool in_range  = (fw_masked >= e.fw_min && fw_masked <= e.fw_max);
+        const bool last_ones = beyond_table && e.fw_max == last_max;
+        if (!in_range && !last_ones) continue;
         uint8_t *found = sc_pattern_scan(copy, sc_size, e.pat);
         if (found) {
             uintptr_t addr = sc_base + (uintptr_t)(found - copy);
@@ -520,15 +606,19 @@ static bool patchShellCore(bool allow_ftp_dev_access = true)
     const char *pat2        = nullptr;
     const char *pat_checker = nullptr;
 
-    for (const auto& e : sc_patch_table) {
-        if (fw_masked >= e.fw_min && fw_masked <= e.fw_max) {
-            pat1 = e.pat1; pat2 = e.pat2; pat_checker = e.pat_checker;
-            break;
+    bool fw_fallback = false;
+    char pat2_relaxed[256];
+    if (const sc_patch_set *e = sc_lookup_patch_set(fw_masked, &fw_fallback)) {
+        pat1 = e->pat1; pat2 = e->pat2; pat_checker = e->pat_checker;
+        if (fw_fallback) {
+            // FW inconnu : octet fragile du pattern 2 mis en joker (voir plus bas : match unique exigé)
+            sc_relax_4th_token(pat2, pat2_relaxed, sizeof(pat2_relaxed));
+            pat2 = pat2_relaxed;
         }
     }
 
     if (!pat1) {
-        plugin_log("[SC_PATCH] FW 0x%08x non supporte", fw_masked);
+        plugin_log("[SC_PATCH] FW 0x%08x non supporte (anterieur a 4.00)", fw_masked);
         return false;
     }
 
@@ -554,6 +644,19 @@ static bool patchShellCore(bool allow_ftp_dev_access = true)
 
         plugin_log("[SC_PATCH] data1=%p data2=%p checker=%p",
                    shellcore_offset_data1, shellcore_offset_data2, patch_checker_offset);
+
+        // ── FW hors table : on n'écrit QUE si chaque pattern correspond exactement 1 fois ──
+        //  (patterns de secours non vérifiés : un match multiple = mauvais endroit = on s'abstient)
+        if (fw_fallback && shellcore_offset_data1 && shellcore_offset_data2) {
+            const int c1 = sc_pattern_count(shellcore_copy, shellcore_size, pat1);
+            const int c2 = sc_pattern_count(shellcore_copy, shellcore_size, pat2);
+            plugin_log("[SC_PATCH] FW de secours : data1 x%d  data2 x%d (unique requis)", c1, c2);
+            if (c1 != 1 || c2 != 1) {
+                plugin_log("[SC_PATCH] match non unique -> aucun patch /data ecrit");
+                shellcore_offset_data1 = nullptr;
+                shellcore_offset_data2 = nullptr;
+            }
+        }
 
         // ── /data sandbox patches — écriture directe sans check préalable ─────
         if (shellcore_offset_data1 && shellcore_offset_data2) {

@@ -1,5 +1,5 @@
 [loader]
-timeout_s               = 60     # durée (s) pendant laquelle le loader attend un jeu configuré
+timeout_s               = 3600    # durée (s) pendant laquelle le loader attend un jeu configuré
                                  # (ou timeout_frames = 3600)
 scan_existing           = true   # tient compte des jeux déjà lancés au démarrage du loader
 default_inject          = true   # valeur de "inject" si non précisée dans un plugin
@@ -17,12 +17,12 @@ path            = "/data/PluginLoader/prx/LSO-1.010.prx"
 delay_frames    = 600            # fakelib monté -> 10 s -> injection de LSO
 inject          = true
 restore_sandbox = true
-fakelib         = true          # pour désactiver le fakelib (défaut : true pour les PPSA)
+fakelib         = true           # pour désactiver le fakelib (défaut : true pour les PPSA)
 
 [[plugin]]
 title           = "PPSA04263"
 path            = "/data/PluginLoader/prx/BeachMenu-1.010.002.prx"
-delay_frames    = 720            # fakelib monté -> 12 s -> injection de BeachMenu
+delay_frames    = 1200           # fakelib monté -> 20 s -> injection de BeachMenu
 inject          = true
 restore_sandbox = true           # mets false si le menu perd l'accès à /data
 
