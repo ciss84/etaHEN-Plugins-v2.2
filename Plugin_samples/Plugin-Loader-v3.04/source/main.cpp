@@ -1,4 +1,4 @@
-// Plugin-Loader v3.01 — by @84Ciss
+// Plugin-Loader v3.04 — by @84Ciss
 // Fusion: ptrace injection (ploader approach) + kqueue detection (v2.02)
 //         + fakelib/unionfs + multi-PRX + patch_shellcore
 //
@@ -346,6 +346,13 @@ static int pt_munmap(pid_t pid, intptr_t addr, size_t len)
 #define PT_RESUME 19
 #endif
 
+#ifndef PT_GETFPREGS
+#define PT_GETFPREGS 35
+#endif
+#ifndef PT_SETFPREGS
+#define PT_SETFPREGS 36
+#endif
+
 static bool g_suspend_others = false;
 
 static std::vector<int> suspend_other_threads(pid_t pid)
@@ -386,6 +393,19 @@ static long pt_call(pid_t pid, intptr_t fn, intptr_t trap,
     if (!fn || !trap) return -1;
     if (pt_getregs(pid, &bak)) return -1;
 
+    // Sauvegarde de l'état SSE/FPU du thread détourné : le thread peut être interrompu
+    // n'importe où (xmm0-15 vivants) et le chargement du PRX les écraserait.
+    alignas(16) uint8_t fpbak[1024];
+    memset(fpbak, 0, sizeof(fpbak));
+    bool have_fp = sys_ptrace(PT_GETFPREGS, pid, (caddr_t)fpbak, 0) == 0;
+    plugin_log("[PT] thread détourné: rip=0x%llx rsp=0x%llx fpregs=%s",
+               (unsigned long long)bak.r_rip, (unsigned long long)bak.r_rsp,
+               have_fp ? "sauvegardés" : "NON disponibles");
+    auto restore_all = [&]() {
+        pt_setregs(pid, &bak);
+        if (have_fp) sys_ptrace(PT_SETFPREGS, pid, (caddr_t)fpbak, 0);
+    };
+
     // Sauter la red zone (128o) puis aligner : à l'entrée d'une fonction
     // SysV, (rsp + 8) % 16 == 0, avec l'adresse de retour à [rsp].
     uint64_t sp = ((bak.r_rsp - 0x200) & ~0xFULL) - 8;
@@ -398,14 +418,14 @@ static long pt_call(pid_t pid, intptr_t fn, intptr_t trap,
     jmp.r_rdi = a1; jmp.r_rsi = a2; jmp.r_rdx = a3;
     jmp.r_rcx = a4; jmp.r_r8  = a5; jmp.r_r9  = a6;
 
-    if (pt_setregs(pid, &jmp)) { pt_setregs(pid, &bak); return -1; }
+    if (pt_setregs(pid, &jmp)) { restore_all(); return -1; }
 
     std::vector<int> frozen;
     if (g_suspend_others) frozen = suspend_other_threads(pid);
 
     if (sys_ptrace(PT_CONTINUE, pid, (caddr_t)1, 0) < 0) {
         resume_threads(frozen);
-        pt_setregs(pid, &bak);
+        restore_all();
         return -1;
     }
 
@@ -415,7 +435,7 @@ static long pt_call(pid_t pid, intptr_t fn, intptr_t trap,
         !WIFSTOPPED(status) || WSTOPSIG(status) != SIGTRAP)
     {
         resume_threads(frozen);
-        pt_setregs(pid, &bak);
+        restore_all();
         return -1;
     }
     resume_threads(frozen);
@@ -423,7 +443,7 @@ static long pt_call(pid_t pid, intptr_t fn, intptr_t trap,
     long ret = -1;
     if (pt_getregs(pid, &jmp) == 0)
         ret = (long)jmp.r_rax;
-    pt_setregs(pid, &bak);
+    restore_all();
     return ret;
 }
 
@@ -1211,7 +1231,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== SHADOW PRX TROPHEE BACKPORK LOADER v3.01 ===");
+    plugin_log("=== SHADOW PRX TROPHEE BACKPORK LOADER v3.04 ===");
 
     // Initialisation kernel
     payload_args_t *args = payload_get_args();
@@ -1269,7 +1289,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.01 By @84Ciss",
+    printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.04 By @84Ciss",
                         fw_major, fw_minor);
     plugin_log("Surveillance SceSysCore.elf (pid %d)...", syscore_pid);
 
