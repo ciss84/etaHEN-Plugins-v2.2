@@ -34,8 +34,8 @@ int unmount(const char* dir, int flags);
 #define IOVEC_SIZE(x)  (sizeof(x) / sizeof(struct iovec))
 #define MAX_FAKELIB_SESSIONS 16
 
-#define DEFAULT_TOML_PATH "/data/plugins/PluginLoader.toml"
-#define LOCK_PATH         "/data/plugins/PluginLoader.lock"
+#define DEFAULT_TOML_PATH "/data/PluginLoader/PluginLoader.toml"
+#define LOCK_PATH         "/data/PluginLoader/PluginLoader.lock"
 
 #define MAX_PLUGINS       10
 #define MAX_TITLES        10
