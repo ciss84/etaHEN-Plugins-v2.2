@@ -1142,7 +1142,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             // SANS toucher au process (pas de ptrace pendant le boot).
             plugin_log("[PT] %s — délai initial %dms depuis le lancement", basename, prx.delay_ms);
             bool gone = false;
-            while ((long)(time(nullptr) - t_start) * 1000 < (long)prx.delay_ms) {
+            if ((long)(time(nullptr) - t_start) * 1000 < (long)prx.delay_ms) {
                 if (!IsProcessRunning(pid)) { gone = true; break; }
                 sceKernelPrepareToSuspendProcess(pid);
                 sceKernelSuspendProcess(pid);
@@ -1161,7 +1161,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             int  mod     = -1;
             int  attempt = 0;
 
-            while (mod <= 0 && attempt < 60)
+            if (mod <= 0 && attempt < 60)
             {
                 attempt++;
                 plugin_log("[RETRY] %s — tentative %d/60", basename, attempt);
