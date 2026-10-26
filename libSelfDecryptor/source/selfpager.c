@@ -160,6 +160,43 @@ static int init() {
         pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDE04F0;
         break;
 
+    // -- 11.xx -> 13.xx : valeurs publiques (ps5-payload-dev/ftpsrv self-prospero.c, via le portage
+    //    etaHEN firmware-profiles.json). NON VERIFIEES sur console par l'auteur de cet ajout.
+    //    10.20 -> 10.60 : pas de valeur publique trouvee -> restent non supportes (ENOSYS).
+    // 11.00 / 11.20
+    case 0x1100:
+    case 0x1120:
+        pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDF1940;
+        break;
+
+    // 11.60
+    case 0x1160:
+        pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDF1960;
+        break;
+
+    // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
+    case 0x1200:
+    case 0x1202:
+    case 0x1220:
+    case 0x1240:
+    case 0x1260:
+    case 0x1270:
+        pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDF2860;
+        break;
+
+    // 13.00 / 13.20
+    case 0x1300:
+    case 0x1320:
+        pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xE038D0;
+        break;
+
+    // 13.40 / 13.42 / 13.60
+    case 0x1340:
+    case 0x1342:
+    case 0x1360:
+        pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xE03910;
+        break;
+
     default:
         return ENOSYS;
     }
