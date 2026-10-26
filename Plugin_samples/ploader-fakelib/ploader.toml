@@ -1,0 +1,24 @@
+# /data/plugins/ploader.toml
+[loader]
+timeout_s = 120
+scan_existing = true
+default_inject = true
+default_restore_sandbox = true
+
+# fakelib : monte app0/fakelib sur common/lib (défaut: true pour les PPSA, false pour les CUSA)
+# Le nettoyage du sandbox se fait tout seul quand le jeu se ferme.
+
+[[plugin]]
+title = "PPSA04263"
+path = "/data/plugins/LSO-1.010.002.prx"
+delay_ms = 1500
+inject = true
+restore_sandbox = true
+# fakelib = true
+
+[[plugin]]
+title = "PPSA04263"
+path = "/data/plugins/FullBeachMenu-1.010.002.prx"
+delay_ms = 4500
+inject = true
+restore_sandbox = true
