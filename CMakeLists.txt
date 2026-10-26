@@ -13,7 +13,4 @@ include_directories(SYSTEM "${PS5_PAYLOAD_SDK}/include")
 
 add_subdirectory(libhijacker)
 add_subdirectory(libNidResolver)
-add_subdirectory(libelfldr)
-add_subdirectory(libelfloader)
-add_subdirectory(ibSelfDecryptor)
 add_subdirectory(Plugin_samples/Plugin-Loader-v3.00)
