@@ -1490,6 +1490,12 @@ static int fk_cleanup_dir(const char* path) {
 
 // Appelé à la détection du jeu (avant toute injection).
 static void fakelib_begin(pid_t pid, const char* title_id) {
+	// Fakelib = jeux PS5 natifs (PPSA) seulement : vérifié sur le title ID avant de toucher au jeu.
+	if (strncmp(title_id, "PPSA", 4) != 0) {
+		notify("[%s] fakelib ignored (PS4 title)", title_id);
+		return;
+	}
+
 	fakelib_session_t* s = NULL;
 	for (int i = 0; i < MAX_FAKELIB_SESSIONS; i++) {
 		if (!g_fk[i].active) {
@@ -1656,7 +1662,11 @@ static void run_plugins(void) {
 			notify("[%s] detected", info.title_id);
 
 			if (entry->fakelib)
-				fakelib_begin(pid, info.title_id);
+				fakelib_begin(pid, info.title_id);   // monte le fakelib (synchrone, comme avant)
+
+			// delay_ms des PRX = temps écoulé APRÈS le montage du fakelib
+			target->created_ms  = now_ms();
+			target->retry_at_ms = target->created_ms;
 		}
 
 		for (int i = 0; i < g_target_count;) {
