@@ -113,6 +113,7 @@ typedef struct {
 	int  restores[MAX_PLUGINS];
 	int  path_count;
 	int  fakelib;   // monter app0/fakelib par-dessus common/lib (défaut: oui pour PPSA)
+	int  fakelib_delay_ms; // attente après détection du jeu avant de monter le fakelib
 } plugin_entry_t;
 
 typedef struct {
@@ -139,6 +140,8 @@ typedef struct {
 	int has_fakelib;
 	int delay_frames;
 	int has_delay_frames;
+	int fakelib_delay_ms;
+	int has_fakelib_delay;
 } pending_plugin_t;
 
 int sceKernelGetAppInfo(pid_t, app_info_t*);
@@ -853,6 +856,7 @@ static int get_or_create_slot(const char* tid) {
 	strncpy(g_plugins[slot].title_id, tid, MAX_TITLE_ID_LEN);
 	g_plugins[slot].title_id[MAX_TITLE_ID_LEN] = '\0';
 	g_plugins[slot].fakelib = (strncmp(tid, "PPSA", 4) == 0);
+	g_plugins[slot].fakelib_delay_ms = 0;
 	return slot;
 }
 
@@ -900,6 +904,8 @@ static void flush_pending(pending_plugin_t* p) {
 			if (slot >= 0) {
 				if (p->has_fakelib)
 					g_plugins[slot].fakelib = p->fakelib;
+				if (p->has_fakelib_delay)
+					g_plugins[slot].fakelib_delay_ms = p->fakelib_delay_ms;
 
 				register_plugin(
 					slot,
@@ -1092,7 +1098,9 @@ static char* add_line_breaks(const char* in, size_t* outsz) {
 		"delay_frames",
 		"inject",
 		"restore_sandbox",
-		"fakelib"
+		"fakelib",
+		"fakelib_delay_ms",
+		"fakelib_delay_frames"
 	};
 
 	size_t o = 0;
@@ -1313,6 +1321,14 @@ static void read_toml(const char* path) {
 							pend.restore = iv;
 							pend.has_restore = 1;
 						}
+						else if (strcmp(key, "fakelib_delay_ms") == 0 && parse_int_value(val, &iv) && iv >= 0 && iv <= 3600000) {
+							pend.fakelib_delay_ms = iv;
+							pend.has_fakelib_delay = 1;
+						}
+						else if (strcmp(key, "fakelib_delay_frames") == 0 && parse_int_value(val, &iv) && iv >= 0 && iv <= 216000) {
+							pend.fakelib_delay_ms = (int)(((long long)iv * 1000) / FPS_ASSUMED);
+							pend.has_fakelib_delay = 1;
+						}
 						else if (strcmp(key, "fakelib") == 0 && parse_bool_value(val, &iv)) {
 							pend.fakelib = iv;
 							pend.has_fakelib = 1;
@@ -1407,14 +1423,25 @@ static void lock_release(void) {
 
 typedef struct {
 	int    active;
+	int    mounted;       // 0 = en attente du délai, 1 = monté
 	int    dead;
 	pid_t  pid;
+	long   mount_at_ms;   // instant du 1er essai de montage (détection + fakelib_delay_ms)
+	long   mounted_at_ms; // instant où le fakelib a été monté (départ du délai des PRX)
+	long   give_up_ms;    // abandon si app0/fakelib n'apparaît pas
 	long   dead_since_ms;
+	char   title_id[MAX_TITLE_ID_LEN + 1];
 	char   sandbox_id[64];
 	char   mount[PATH_MAX];
 } fakelib_session_t;
 
 static fakelib_session_t g_fk[MAX_FAKELIB_SESSIONS];
+
+// Le fakelib ne concerne que les jeux PS5 natifs (PPSA). Vérifié sur le title ID,
+// avant de toucher au moindre dossier du jeu.
+static int fk_is_ps5_title(const char* title_id) {
+	return title_id && strncmp(title_id, "PPSA", 4) == 0;
+}
 
 static int fk_mount_unionfs(const char* src, const char* dst) {
 	struct iovec iov[] = {
@@ -1501,63 +1528,65 @@ static int fk_cleanup_dir(const char* path) {
 	return result;
 }
 
-// Appelé à la détection du jeu (avant toute injection).
-static void fakelib_begin(pid_t pid, const char* title_id) {
-	// Fakelib = jeux PS5 natifs (PPSA) seulement : vérifié sur le title ID avant de toucher au jeu.
-	if (strncmp(title_id, "PPSA", 4) != 0) {
+// Appelé à la détection du jeu : ne monte rien tout de suite, il planifie le montage
+// après fakelib_delay_ms (le jeu a besoin de temps pour démarrer et créer son sandbox).
+static void fakelib_begin(pid_t pid, const char* title_id, int delay_ms) {
+	if (!fk_is_ps5_title(title_id)) {
 		notify("[%s] fakelib ignored (PS4 title)", title_id);
 		return;
 	}
 
-	fakelib_session_t* s = NULL;
 	for (int i = 0; i < MAX_FAKELIB_SESSIONS; i++) {
-		if (!g_fk[i].active) {
-			s = &g_fk[i];
-			break;
-		}
-	}
-	if (!s)
-		return;
+		fakelib_session_t* s = &g_fk[i];
+		if (s->active)
+			continue;
 
-	int num = -1;
-	for (int attempt = 0; attempt < 20 && num < 0; attempt++) {
-		num = fk_highest_sandbox(title_id);
-		if (num < 0)
-			usleep(50000);
-	}
-	if (num < 0)
+		memset(s, 0, sizeof(*s));
+		s->active = 1;
+		s->pid = pid;
+		s->mount_at_ms = now_ms() + (long)delay_ms;
+		s->give_up_ms = s->mount_at_ms + 20000L;
+		snprintf(s->title_id, sizeof(s->title_id), "%s", title_id);
 		return;
+	}
+}
+
+// Tente le montage. Retourne 1 = monté, 0 = pas encore prêt (réessayer), -1 = abandon.
+static int fakelib_try_mount(fakelib_session_t* s) {
+	if (!fk_is_ps5_title(s->title_id))
+		return -1;
+
+	int num = fk_highest_sandbox(s->title_id);
+	if (num < 0)
+		return 0;
 
 	char sandbox_id[64];
-	snprintf(sandbox_id, sizeof(sandbox_id), "%s_%03d", title_id, num);
+	snprintf(sandbox_id, sizeof(sandbox_id), "%s_%03d", s->title_id, num);
 
 	char src[PATH_MAX];
 	snprintf(src, sizeof(src), "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
 
 	struct stat st;
 	if (stat(src, &st) != 0)
-		return; // pas de fakelib dans ce jeu
+		return 0; // app0 pas encore prêt (ou pas de fakelib dans ce jeu)
 
 	char folder[256];
-	if (!fk_find_random_folder(title_id, num, folder, sizeof(folder)))
-		return;
+	if (!fk_find_random_folder(s->title_id, num, folder, sizeof(folder)))
+		return 0;
 
 	char dst[PATH_MAX];
 	snprintf(dst, sizeof(dst), "/mnt/sandbox/%s/%s/common/lib", sandbox_id, folder);
 
 	if (fk_mount_unionfs(src, dst) != 0) {
-		notify("[%s] fakelib mount failed (errno %d)", title_id, errno);
+		notify("[%s] fakelib mount failed (errno %d)", s->title_id, errno);
 		unmount(dst, MNT_FORCE);
-		return;
+		return -1;
 	}
 
-	memset(s, 0, sizeof(*s));
-	s->active = 1;
-	s->pid = pid;
 	snprintf(s->sandbox_id, sizeof(s->sandbox_id), "%s", sandbox_id);
 	snprintf(s->mount, sizeof(s->mount), "%s", dst);
-
-	notify("[%s] fakelib mounted", title_id);
+	notify("[%s] fakelib mounted", s->title_id);
+	return 1;
 }
 
 // Non bloquant : à appeler à chaque tour de boucle.
@@ -1567,11 +1596,34 @@ static void fakelib_poll(void) {
 		if (!s->active)
 			continue;
 
+		long now = now_ms();
+
+		// ── 1) pas encore monté : attendre le délai, puis monter dès que le sandbox est prêt
+		if (!s->mounted) {
+			if (pid_alive(s->pid) == 0) {
+				s->active = 0; // le jeu s'est fermé avant le montage
+				continue;
+			}
+			if (now < s->mount_at_ms)
+				continue;
+
+			int r = fakelib_try_mount(s);
+			if (r > 0) {
+				s->mounted = 1;
+				s->mounted_at_ms = now_ms();
+			}
+			else if (r < 0 || now >= s->give_up_ms) {
+				s->active = 0; // échec ou pas de fakelib dans ce jeu
+			}
+			continue;
+		}
+
+		// ── 2) monté : surveiller la fermeture du jeu puis nettoyer
 		if (!s->dead) {
 			if (pid_alive(s->pid) != 0)
 				continue;
 			s->dead = 1;
-			s->dead_since_ms = now_ms();
+			s->dead_since_ms = now;
 		}
 
 		// attendre que le système ait démonté le sandbox (max 30 s)
@@ -1579,7 +1631,7 @@ static void fakelib_poll(void) {
 		snprintf(app0, sizeof(app0), "/mnt/sandbox/%s/app0", s->sandbox_id);
 
 		struct stat st;
-		if (stat(app0, &st) == 0 && now_ms() - s->dead_since_ms < 30000L)
+		if (stat(app0, &st) == 0 && now - s->dead_since_ms < 30000L)
 			continue;
 
 		unmount(s->mount, 0);
@@ -1608,6 +1660,24 @@ static void fakelib_drain(void) {
 
 		usleep(500000);
 	}
+}
+
+// Session fakelib active (en attente ou montée) pour ce pid, sinon NULL.
+static fakelib_session_t* fakelib_find(pid_t pid) {
+	for (int i = 0; i < MAX_FAKELIB_SESSIONS; i++)
+		if (g_fk[i].active && g_fk[i].pid == pid)
+			return &g_fk[i];
+	return NULL;
+}
+
+// Instant à partir duquel on compte delay_ms des PRX :
+//  - jeu avec fakelib : le moment où le fakelib est monté (-1 = pas encore monté, attendre)
+//  - sinon            : la détection du jeu
+static long injection_base_ms(const target_state_t* t) {
+	fakelib_session_t* s = fakelib_find(t->pid);
+	if (s)
+		return s->mounted ? s->mounted_at_ms : -1;
+	return t->created_ms;
 }
 
 static void run_plugins(void) {
@@ -1677,11 +1747,7 @@ static void run_plugins(void) {
 			notify("[%s] detected", info.title_id);
 
 			if (entry->fakelib)
-				fakelib_begin(pid, info.title_id);   // monte le fakelib (synchrone, comme avant)
-
-			// delay_ms des PRX = temps écoulé APRÈS le montage du fakelib
-			target->created_ms  = now_ms();
-			target->retry_at_ms = target->created_ms;
+				fakelib_begin(pid, info.title_id, entry->fakelib_delay_ms);
 		}
 
 		for (int i = 0; i < g_target_count;) {
@@ -1703,7 +1769,11 @@ static void run_plugins(void) {
 				if (!entry->injects[p] || target->injected[p])
 					continue;
 
-				long ready_at = target->created_ms + (long)entry->delays[p];
+				long base = injection_base_ms(target);
+				if (base < 0)
+					continue; // fakelib pas encore monté : les PRX attendent
+
+				long ready_at = base + (long)entry->delays[p];
 				if (!target->started[p]) {
 					if (now < ready_at)
 						continue;
