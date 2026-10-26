@@ -1117,6 +1117,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
         const time_t t_start = time(nullptr);
 
         // Attente initiale minimale — laisser dynld charger libkernel
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
         usleep(750000);
 
         // jb du loader (accès /data)
@@ -1127,7 +1129,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
             if (prx.plt) continue;   // déjà traité par la méthode PLT
             const char *basename = strrchr(prx.path.c_str(), '/');
             basename = basename ? basename + 1 : prx.path.c_str();
-
+            
+            sceKernelPrepareToResumeProcess(pid);
+            sceKernelResumeProcess(pid);
+            
             // Fichier absent ? On ne touche surtout pas au jeu (pas de ptrace).
             if (access(prx.path.c_str(), R_OK) != 0) {
                 plugin_log("[INJ] PRX introuvable: '%s' (errno %d) — injection annulée, jeu non touché",
@@ -1142,13 +1147,15 @@ static void inject_into_game(pid_t pid, const char *title_id,
             bool gone = false;
             while ((long)(time(nullptr) - t_start) * 1000 < (long)prx.delay_ms) {
                 if (!IsProcessRunning(pid)) { gone = true; break; }
+                sceKernelPrepareToSuspendProcess(pid);
+                sceKernelSuspendProcess(pid);
                 usleep(250000);
             }
             if (gone) {
                 plugin_log("[RETRY] process %d disparu pendant le délai, abandon", pid);
                 break;
             }
-
+        
             int  mod     = -1;
             int  attempt = 0;
 
@@ -1214,6 +1221,13 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 plugin_log("[RETRY] ECHEC définitif: %s après %d tentatives", basename, attempt);
         }
     }
+
+    // Final resume
+    usleep(500000);
+    sceKernelPrepareToResumeProcess(pid);
+    sceKernelResumeProcess(pid);
+
+    plugin_log("[PT] %d/%zu PRX injected", success_count, prx_list.size());
 
     // ── Attendre fermeture du jeu, puis cleanup fakelib ───────────────────
     plugin_log("[Wait] En attente fermeture jeu (pid %d)...", pid);
