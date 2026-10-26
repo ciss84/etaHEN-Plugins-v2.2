@@ -1,6 +1,7 @@
 ###################################################################################################
-# ploader + fakelib — version plugin (même chaîne de build que Plugin-Loader v3)
-# Source : source/main.c (ploader 1.2.0 + montage fakelib/unionfs)
+# Plugin-Loader v3.01 — by @84Ciss
+# Injection ptrace (ploader) + kqueue detection + fakelib + multi-PRX
+# ScePad retiré du link (PLT hook scePadReadState supprimé)
 ###################################################################################################
 
 cmake_minimum_required (VERSION 3.20)
@@ -9,7 +10,7 @@ set(basename "ploader-fakelib")
 project(${basename} C CXX)
 
 set(PLUGIN_TITLE_ID "PLUG00310")
-set(PLUGIN_VERSION  "1.2.0")
+set(PLUGIN_VERSION  "3.10")
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -48,6 +49,7 @@ target_compile_options(${PROJECT_NAME} PUBLIC
 message("========== build: ${PROJECT_NAME} ==========")
 set(D_SRC ${D_CWD}/source)
 
+include_directories(SYSTEM "${D_SRC}/../../../libelfloader/source/")
 include_directories(SYSTEM "${PS5_PAYLOAD_SDK}")
 include_directories(SYSTEM "${PS5_PAYLOAD_SDK}/include")
 
@@ -66,7 +68,7 @@ file(GLOB SrcFiles
 )
 
 set(CMAKE_C_FLAGS   "--target=x86_64-sie-ps5 -DPPR -DPS5 -DPS5_FW_VERSION=${V_FW} ")
-set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -Wno-keyword-macro -fPIC -fPIE -march=znver2 -Wall -fstack-protector-all")
+set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -Wno-keyword-macro -fPIC -fPIE -march=znver2 -Wall -Werror -fstack-protector-all")
 set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -DDEBUG -gfull -gdwarf-2 -O0 -pedantic -pedantic-errors")
 set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS} -O0")
 
@@ -90,7 +92,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../include")
 target_include_directories(${PROJECT_NAME} PRIVATE "${D_CWD}/../shared/include")
 target_link_directories(${PROJECT_NAME} PUBLIC "${PROJECT_ROOT}/lib")
 
+# ScePad retiré — plus de PLT hook sur scePadReadState
 target_link_libraries(${PROJECT_NAME} PUBLIC
+    hijacker
     SceLibcInternal
     SceSystemService
     SceNet
@@ -101,6 +105,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
     SceVideoOut
     kernel_sys
     SceAppInstUtil
+    elfloader
 )
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
