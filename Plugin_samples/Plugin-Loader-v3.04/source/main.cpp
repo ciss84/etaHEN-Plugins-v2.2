@@ -1126,9 +1126,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
             if (prx.plt) continue;   // déjà traité par la méthode PLT
             const char *basename = strrchr(prx.path.c_str(), '/');
             basename = basename ? basename + 1 : prx.path.c_str();
-               
-            // Attends que le PRX se charge (~2-3 secondes)
-            sleep(3);
             
             // Fichier absent ? On ne touche surtout pas au jeu (pas de ptrace).
             if (access(prx.path.c_str(), R_OK) != 0) {
@@ -1142,7 +1139,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
             // SANS toucher au process (pas de ptrace pendant le boot).
             plugin_log("[PT] %s — délai initial %dms depuis le lancement", basename, prx.delay_ms);
             bool gone = false;
-            if ((long)(time(nullptr) - t_start) * 1000 < (long)prx.delay_ms) {
+            
+            // Attends que le PRX se charge (~2-3 secondes)
+            sleep(3);
+            
+            while ((long)(time(nullptr) - t_start) * 1000 < (long)prx.delay_ms) {
                 if (!IsProcessRunning(pid)) { gone = true; break; }
                 usleep(250000);
             }
@@ -1154,7 +1155,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             int  mod     = -1;
             int  attempt = 0;
 
-            if (mod <= 0 && attempt < 60)
+            while (mod <= 0 && attempt < 60)
             {
                 attempt++;
                 plugin_log("[RETRY] %s — tentative %d/60", basename, attempt);
