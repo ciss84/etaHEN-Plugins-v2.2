@@ -34,8 +34,8 @@ int unmount(const char* dir, int flags);
 #define IOVEC_SIZE(x)  (sizeof(x) / sizeof(struct iovec))
 #define MAX_FAKELIB_SESSIONS 16
 
-#define DEFAULT_TOML_PATH "/data/plugins/ploader.toml"
-#define LOCK_PATH         "/data/plugins/ploader.lock"
+#define DEFAULT_TOML_PATH "/data/plugins/PluginLoader.toml"
+#define LOCK_PATH         "/data/plugins/PluginLoader.lock"
 
 #define MAX_PLUGINS       10
 #define MAX_TITLES        10
@@ -172,7 +172,7 @@ static void notify(const char* fmt, ...) {
 		char message[3075];
 	} req = { 0 };
 
-	snprintf(req.message, sizeof(req.message), "[ploader] %s", msg);
+	snprintf(req.message, sizeof(req.message), "[Plugin-Loader v3.10] %s", msg);
 	sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
 }
 
