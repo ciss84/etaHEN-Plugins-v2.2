@@ -43,6 +43,7 @@ int unmount(const char* dir, int flags);
 #define MAX_TITLE_ID_LEN  16
 #define MAX_LINE_LEN      1024
 #define MAX_KNOWN_PIDS    512
+#define FPS_ASSUMED       60      // delay_frames -> ms : frames * 1000 / FPS_ASSUMED
 
 #define NID_LOADSTARTMODULE "wzvqT4UqKX8"
 #define NID_GETPID          "HoLVWNanBBc"
@@ -136,6 +137,8 @@ typedef struct {
 	int has_restore;
 	int fakelib;
 	int has_fakelib;
+	int delay_frames;
+	int has_delay_frames;
 } pending_plugin_t;
 
 int sceKernelGetAppInfo(pid_t, app_info_t*);
@@ -150,6 +153,7 @@ static int g_target_count = 0;
 static struct timespec g_t0;
 
 static int g_timeout_s = 120;
+static int g_timeout_frames = -1;   // -1 = non défini ; sinon prioritaire sur timeout_s
 static int g_scan_existing = 1;
 static int g_default_inject = 1;
 static int g_default_restore = 1;
@@ -873,6 +877,8 @@ static void apply_loader_key(const char* key, const char* val) {
 
 	if (strcmp(key, "timeout_s") == 0 && parse_int_value(val, &iv) && iv >= 1 && iv <= 3600)
 		g_timeout_s = iv;
+	else if (strcmp(key, "timeout_frames") == 0 && parse_int_value(val, &iv) && iv >= 1 && iv <= 216000)
+		g_timeout_frames = iv;
 	else if (strcmp(key, "scan_existing") == 0 && parse_bool_value(val, &iv))
 		g_scan_existing = iv;
 	else if (strcmp(key, "default_inject") == 0 && parse_bool_value(val, &iv))
@@ -898,7 +904,8 @@ static void flush_pending(pending_plugin_t* p) {
 				register_plugin(
 					slot,
 					normalized,
-					p->has_delay ? p->delay_ms : 0,
+					p->has_delay_frames ? (int)(((long long)p->delay_frames * 1000) / FPS_ASSUMED)
+						: (p->has_delay ? p->delay_ms : 0),
 					p->has_inject ? p->inject : g_default_inject,
 					p->has_restore ? p->restore : g_default_restore
 				);
@@ -1075,12 +1082,14 @@ static char* add_line_breaks(const char* in, size_t* outsz) {
 
 	static const char* keys[] = {
 		"timeout_s",
+		"timeout_frames",
 		"scan_existing",
 		"default_inject",
 		"default_restore_sandbox",
 		"title",
 		"path",
 		"delay_ms",
+		"delay_frames",
 		"inject",
 		"restore_sandbox",
 		"fakelib"
@@ -1291,6 +1300,10 @@ static void read_toml(const char* path) {
 						else if (strcmp(key, "delay_ms") == 0 && parse_int_value(val, &iv) && iv >= 0 && iv <= 3600000) {
 							pend.delay_ms = iv;
 							pend.has_delay = 1;
+						}
+						else if (strcmp(key, "delay_frames") == 0 && parse_int_value(val, &iv) && iv >= 0 && iv <= 216000) {
+							pend.delay_frames = iv;
+							pend.has_delay_frames = 1;
 						}
 						else if (strcmp(key, "inject") == 0 && parse_bool_value(val, &iv)) {
 							pend.inject = iv;
@@ -1607,7 +1620,9 @@ static void run_plugins(void) {
 		known_count = get_all_pids(known, MAX_KNOWN_PIDS);
 
 	long start_ms = now_ms();
-	const long timeout_ms = (long)g_timeout_s * 1000L;
+	const long timeout_ms = (g_timeout_frames >= 0)
+		? (long)(((long long)g_timeout_frames * 1000) / FPS_ASSUMED)
+		: (long)g_timeout_s * 1000L;
 
 	for (;;) {
 		if (now_ms() - start_ms >= timeout_ms) {
