@@ -1115,8 +1115,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     {
         const int RETRY_INTERVAL_MS = 1000;
         const time_t t_start = time(nullptr);
-
-        // Attente initiale minimale — laisser dynld charger libkernel
+        
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
         usleep(750000);
@@ -1132,6 +1131,9 @@ static void inject_into_game(pid_t pid, const char *title_id,
             
             sceKernelPrepareToResumeProcess(pid);
             sceKernelResumeProcess(pid);
+                
+            // Attends que le PRX se charge (~2-3 secondes)
+            sleep(3);
             
             // Fichier absent ? On ne touche surtout pas au jeu (pas de ptrace).
             if (access(prx.path.c_str(), R_OK) != 0) {
@@ -1155,7 +1157,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 plugin_log("[RETRY] process %d disparu pendant le délai, abandon", pid);
                 break;
             }
-        
+            // Final resume
+            usleep(500000);
+            sceKernelPrepareToResumeProcess(pid);
+            sceKernelResumeProcess(pid);
+    
             int  mod     = -1;
             int  attempt = 0;
 
@@ -1203,11 +1209,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
                 pt_detach(pid);
 
-    // Final resume
-    usleep(500000);
-    sceKernelPrepareToResumeProcess(pid);
-    sceKernelResumeProcess(pid);
-
                 if (mod > 0) {
                     plugin_log("[RETRY] OK: %s (handle %d) à la tentative %d",
                                basename, mod, attempt);
@@ -1226,7 +1227,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 plugin_log("[RETRY] ECHEC définitif: %s après %d tentatives", basename, attempt);
         }
     }
-
+        
     // ── Attendre fermeture du jeu, puis cleanup fakelib ───────────────────
     plugin_log("[Wait] En attente fermeture jeu (pid %d)...", pid);
     wait_for_pid_exit(pid);
