@@ -26,7 +26,13 @@ static constexpr uintptr_t UCRED_OFFSET = 0x40;
 static uintptr_t getCurrentProc() {
 
 	const pid_t pid = getpid();
-	uintptr_t proc = kread<uintptr_t>(kernel_base + offsets::allproc());
+	const size_t allprocOff = offsets::allproc();
+	if (allprocOff == static_cast<size_t>(-1)) {
+		// firmware absent de la table offsets.cpp : ne pas lire a kernel_base - 1
+		puts("getCurrentProc: firmware non supporte (allproc) - abandon");
+		return 0;
+	}
+	uintptr_t proc = kread<uintptr_t>(kernel_base + allprocOff);
 	while (proc != 0) {
 		int cid = kread<int>(proc + PID_OFFSET);
 		if (cid == pid) {

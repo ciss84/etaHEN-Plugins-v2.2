@@ -13,6 +13,9 @@ UniquePtr<Hijacker> Hijacker::getHijacker(const StringView &processName) {
 	for (dbg::ProcessInfo info : dbg::getProcesses()) {
 		if (info.name() == processName) {
 			auto p = ::getProc(info.pid());
+			if (p == nullptr) {
+				continue;   // proc introuvable (ex. firmware non supporte) : ne pas dereferencer nullptr
+			}
 			obj = p->getSharedObject();
 		}
 	}
@@ -68,6 +71,10 @@ void Hijacker::jailbreak(bool escapeSandbox) const {
 	kernel_copyout(ucred + 0x04, &uid, 0x4);
 	if(uid == 0 && !escapeSandbox){
 		puts("already jailbroken");
+		return;
+	}
+	if (offsets::root_vnode() == static_cast<size_t>(-1)) {
+		puts("jailbreak: firmware non supporte (root_vnode) - abandon");
 		return;
 	}
 	UniquePtr<uint8_t[]> rootvnode_area_store{new uint8_t[0x100]};
