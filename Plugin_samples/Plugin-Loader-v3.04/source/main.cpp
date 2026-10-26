@@ -1115,9 +1115,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     {
         const int RETRY_INTERVAL_MS = 1000;
         const time_t t_start = time(nullptr);
-        
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
+
         usleep(750000);
 
         // jb du loader (accès /data)
@@ -1128,10 +1126,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             if (prx.plt) continue;   // déjà traité par la méthode PLT
             const char *basename = strrchr(prx.path.c_str(), '/');
             basename = basename ? basename + 1 : prx.path.c_str();
-            
-            sceKernelPrepareToResumeProcess(pid);
-            sceKernelResumeProcess(pid);
-                
+               
             // Attends que le PRX se charge (~2-3 secondes)
             sleep(3);
             
@@ -1157,6 +1152,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 plugin_log("[RETRY] process %d disparu pendant le délai, abandon", pid);
                 break;
             }
+
+            // Final resume
+            usleep(500000);
+            sceKernelPrepareToResumeProcess(pid);
+            sceKernelResumeProcess(pid);
     
             int  mod     = -1;
             int  attempt = 0;
@@ -1218,11 +1218,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     usleep(RETRY_INTERVAL_MS * 1000);
                 }
             }
-            
-            // Final resume
-            usleep(500000);
-            sceKernelPrepareToResumeProcess(pid);
-            sceKernelResumeProcess(pid);
             
             if (mod <= 0)
                 plugin_log("[RETRY] ECHEC définitif: %s après %d tentatives", basename, attempt);
