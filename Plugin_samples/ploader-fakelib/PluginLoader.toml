@@ -1,20 +1,43 @@
 [loader]
-timeout_s = 60
-scan_existing = true
-default_inject = true
-default_restore_sandbox = true
+timeout_s               = 60     # durée (s) pendant laquelle le loader attend un jeu configuré
+                                 # (ou timeout_frames = 3600)
+scan_existing           = true   # tient compte des jeux déjà lancés au démarrage du loader
+default_inject          = true   # valeur de "inject" si non précisée dans un plugin
+default_restore_sandbox = true   # valeur de "restore_sandbox" si non précisée
 
+# Ordre pour un jeu PS5 (PPSA) :
+#   jeu détecté -> le fakelib est monté tout de suite
+#               -> delay_frames de chaque PRX -> injection du PRX
+# Le délai des PRX part du montage du fakelib. Frames = temps à 60 fps (60 frames = 1 s).
+
+# -- GTA V PS5 (PPSA04263) : 2 PRX -------------------------------------------
 [[plugin]]
-title                = "PPSA04263"
-path                 = "/data/PluginLoader/prx/LSO-1.010.prx"
-fakelib_delay_frames = 0     # 0 s avant le montage du fakelib
-delay_frames         = 60     # 1 s après le montage -> injection de LSO
-inject               = true
-restore_sandbox      = true
+title           = "PPSA04263"
+path            = "/data/PluginLoader/prx/LSO-1.010.prx"
+delay_frames    = 600            # fakelib monté -> 10 s -> injection de LSO
+inject          = true
+restore_sandbox = true
+fakelib         = true          # pour désactiver le fakelib (défaut : true pour les PPSA)
 
 [[plugin]]
 title           = "PPSA04263"
 path            = "/data/PluginLoader/prx/BeachMenu-1.010.002.prx"
-delay_frames    = 600          # 10 s après le montage -> injection de BeachMenu
+delay_frames    = 720            # fakelib monté -> 12 s -> injection de BeachMenu
 inject          = true
+restore_sandbox = true           # mets false si le menu perd l'accès à /data
+
+# -- Jeu PS4 (CUSA) : jamais de fakelib --------------------------------------
+[[plugin]]
+title           = "CUSA00411"
+path            = "/data/PluginLoader/prx/BeachMenu157.prx"
+delay_frames    = 60             # 1 s après la détection
+inject          = true
+restore_sandbox = true
+
+# -- Plugin désactivé --------------------------------------------------------
+[[plugin]]
+title           = "CUSA00419"
+path            = "/data/PluginLoader/prx/BeachMenu157.prx"
+delay_frames    = 60
+inject          = false
 restore_sandbox = true
