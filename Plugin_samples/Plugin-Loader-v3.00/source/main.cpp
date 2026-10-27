@@ -436,8 +436,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PRX LOADER v3.00 + BACKPORK ===");
-    //plugin_log("=== SHADOW PRX TROPHEE BACKPORK LOADER v3.00===");   
+    plugin_log("=== PRX LOADER v3.01 + BACKPORK ===");
+    //plugin_log("=== SHADOW PRX TROPHEE BACKPORK LOADER v3.01===");   
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -493,8 +493,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.00.3 By @SGK84 ", fw_major, fw_minor);
-    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.00.3 By @SGK84 ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.01 By @SGK84 ", fw_major, fw_minor);
+    //printf_notification("Shadow-Prx-Loader FW: %x.%02x      \nVer:3.01 By @SGK84 ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
