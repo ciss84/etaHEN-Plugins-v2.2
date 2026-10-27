@@ -384,7 +384,7 @@ namespace offsets {
     // text_base_delta() est SIGNE : l'adresse reelle est
     //   kernel_data_base + text_base_delta()   (le delta est negatif ici).
 
-    ptrdiff_t text_base_delta() {
+    int64_t text_base_delta() {
         switch (getSystemSwVersion() & VERSION_MASK) {
             case V100: case V101: case V102:
             case V105: case V110: case V111: case V112: case V113: case V114:
