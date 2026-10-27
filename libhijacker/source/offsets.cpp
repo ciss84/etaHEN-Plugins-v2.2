@@ -376,4 +376,152 @@ namespace offsets {
                 return -1;
         }
     }
+
+    // ── Ajouts : champs KERNEL_ADDRESS_TEXT_BASE / BUS_DATA_DEVICES et
+    // KERNEL_OFFSET_VMSPACE_P_ROOT / VM_PMAP fournis par l'utilisateur.
+    // NON UTILISES ailleurs dans le code actuel (aucun appelant existant) et
+    // NON VERIFIES sur console : ajoutes tels quels depuis la table fournie.
+    // text_base_delta() est SIGNE : l'adresse reelle est
+    //   kernel_data_base + text_base_delta()   (le delta est negatif ici).
+
+    ptrdiff_t text_base_delta() {
+        switch (getSystemSwVersion() & VERSION_MASK) {
+            case V100: case V101: case V102:
+            case V105: case V110: case V111: case V112: case V113: case V114:
+                return -0x1B40000;
+            case V200: case V220: case V225: case V226:
+            case V230: case V250: case V270:
+                return -0x1B80000;
+            case V300: case V310: case V320: case V321:
+                return -0x0BD0000;
+            case V400: case V402: case V403: case V450: case V451:
+                return -0x0C00000;
+            case V500: case V502: case V510: case V550:
+                return -0x0C40000;
+            case V600: case V602: case V650:
+                return -0x0C60000;
+            case V700: case V701: case V720: case V740: case V760: case V761:
+                return -0x0C50000;
+            case V800: case V820: case V840: case V860:
+                return -0x0C70000;
+            case V900: case V905: case V920: case V940: case V960:
+                return -0x0CA0000;
+            case V1000: case V1001: case V1020: case V1040: case V1060:
+                return -0x0CC0000;
+            case V1100: case V1120: case V1140: case V1160:
+                return -0x0D30000;
+            case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
+                return -0x0D50000;
+            case V1300: case V1320:
+                return -0x0CB0000;
+            case V1340: case V1342:
+                return -0x0CB0000;
+            case V1360:
+                return -0x0CC0000;
+            case V1400: case V1410:
+                return -0x0CE0000;
+            default:
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
+                return 0;
+        }
+    }
+
+    size_t bus_data_devices() {
+        switch (getSystemSwVersion() & VERSION_MASK) {
+            case V100: case V101: case V102:
+                return 0x1D6D478;
+            case V105: case V110: case V111: case V112: case V113: case V114:
+                return 0x1D6D487;
+            case V200: case V220: case V225: case V226:
+            case V230: case V250: case V270:
+                return 0x1D91478;
+            case V300: case V310: case V320: case V321:
+                return 0x1DF1678;
+            case V400: case V402: case V403: case V450: case V451:
+                return 0x1E69678;
+            case V500: case V502: case V510: case V550:
+                return 0x1F996C8;
+            case V600: case V602: case V650:
+                return 0x1FB96C8;
+            case V700: case V701: case V720: case V740: case V760: case V761:
+                return 0x1FA5718;
+            case V800: case V820: case V840: case V860:
+                return 0x1FA5718;
+            case V900: case V905: case V920: case V940: case V960:
+                return 0x1F65718;
+            case V1000: case V1001: case V1020: case V1040: case V1060:
+                return 0x1F65718;
+            case V1100: case V1120: case V1140: case V1160:
+                return 0x2075718;
+            case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
+                return 0x20757E8;
+            case V1300: case V1320:
+                return 0x20981E8;
+            case V1340: case V1342:
+                return 0x20981E8;
+            case V1360:
+                return 0x2098228;
+            case V1400: case V1410:
+                return 0x20A8878;
+            default:
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
+                return -1;
+        }
+    }
+
+    // Offsets de champs DANS la structure vmspace (pas relatifs a
+    // KERNEL_ADDRESS_DATA_BASE, contrairement aux fonctions ci-dessus).
+    size_t vmspace_p_root() {
+        switch (getSystemSwVersion() & VERSION_MASK) {
+            case V100: case V101: case V102:
+                return 0x1c0;
+            case V105: case V110: case V111: case V112: case V113: case V114:
+            case V200: case V220: case V225: case V226:
+            case V230: case V250: case V270:
+            case V300: case V310: case V320: case V321:
+            case V400: case V402: case V403: case V450: case V451:
+            case V500: case V502: case V510: case V550:
+                return 0x1c8;
+            case V600: case V602: case V650:
+            case V700: case V701: case V720: case V740: case V760: case V761:
+            case V800: case V820: case V840: case V860:
+            case V900: case V905: case V920: case V940: case V960:
+            case V1000: case V1001: case V1020: case V1040: case V1060:
+            case V1100: case V1120: case V1140: case V1160:
+            case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
+            case V1300: case V1320: case V1340: case V1342: case V1360:
+            case V1400: case V1410:
+                return 0x1d0;
+            default:
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
+                return -1;
+        }
+    }
+
+    size_t vmspace_vm_pmap() {
+        switch (getSystemSwVersion() & VERSION_MASK) {
+            case V100: case V101: case V102:
+                return 0x2c0;
+            case V105: case V110: case V111: case V112: case V113: case V114:
+            case V200: case V220: case V225: case V226:
+            case V230: case V250: case V270:
+            case V300: case V310: case V320: case V321:
+            case V400: case V402: case V403: case V450: case V451:
+            case V500: case V502: case V510: case V550:
+                return 0x2e0;
+            case V600: case V602: case V650:
+            case V700: case V701: case V720: case V740: case V760: case V761:
+            case V800: case V820: case V840: case V860:
+            case V900: case V905: case V920: case V940: case V960:
+            case V1000: case V1001: case V1020: case V1040: case V1060:
+            case V1100: case V1120: case V1140: case V1160:
+            case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
+            case V1300: case V1320: case V1340: case V1342: case V1360:
+            case V1400: case V1410:
+                return 0x2e8;
+            default:
+                printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
+                return -1;
+        }
+    }
 }
