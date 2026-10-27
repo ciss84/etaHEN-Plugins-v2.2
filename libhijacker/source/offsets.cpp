@@ -64,9 +64,12 @@ static constexpr uint32_t V1040 = 0x10400000;
 static constexpr uint32_t V1060 = 0x10600000;
 // 11.xx -> 13.xx : valeurs publiques (portage etaHEN, firmware-profiles.json).
 // NON VERIFIEES sur console par l'auteur de cet ajout : seule la source indique
-// "community-confirmed" pour 11.20, 12.40, 13.40 et 13.60. 11.40 : pas de table publique -> non supporte.
+// "community-confirmed" pour 11.20, 12.40, 13.40 et 13.60.
+// 11.40 : table KERNEL_ADDRESS_* fournie par l'utilisateur (meme bucket noyau
+// que 11.00/11.20/11.60 pour allproc/security_flags/root_vnode) -> ajoute ci-dessous.
 static constexpr uint32_t V1100 = 0x11000000;
 static constexpr uint32_t V1120 = 0x11200000;
+static constexpr uint32_t V1140 = 0x11400000;
 static constexpr uint32_t V1160 = 0x11600000;
 static constexpr uint32_t V1200 = 0x12000000;
 static constexpr uint32_t V1202 = 0x12020000;
@@ -79,6 +82,10 @@ static constexpr uint32_t V1320 = 0x13200000;
 static constexpr uint32_t V1340 = 0x13400000;
 static constexpr uint32_t V1342 = 0x13420000;
 static constexpr uint32_t V1360 = 0x13600000;
+// 14.xx : table KERNEL_ADDRESS_* fournie par l'utilisateur. NON VERIFIE sur
+// console par l'auteur de cet ajout.
+static constexpr uint32_t V1400 = 0x14000000;
+static constexpr uint32_t V1410 = 0x14100000;
 
 
 
@@ -137,7 +144,7 @@ namespace offsets {
                 break;
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
             // 11.00 / 11.20 / 11.60
-            case V1100: case V1120: case V1160:
+            case V1100: case V1120: case V1140: case V1160:
                 allprocOffset = 0x2875D70;
                 break;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
@@ -155,6 +162,10 @@ namespace offsets {
             // 13.60
             case V1360:
                 allprocOffset = 0x28C9E80;
+                break;
+            // 14.00 / 14.10
+            case V1400: case V1410:
+                allprocOffset = 0x28D9EA0;
                 break;
             default:
                 printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
@@ -193,7 +204,7 @@ namespace offsets {
                 return 0x0D79064;
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
             // 11.00 / 11.20 / 11.60
-            case V1100: case V1120: case V1160:
+            case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
@@ -207,6 +218,9 @@ namespace offsets {
             // 13.60
             case V1360:
                 return 0xD9C064;
+            // 14.00 / 14.10
+            case V1400: case V1410:
+                return 0xDA4064;
             default:
                 printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
@@ -239,7 +253,7 @@ namespace offsets {
                 return 0x0D79088; //0x0D79064 + 0x24
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
             // 11.00 / 11.20 / 11.60
-            case V1100: case V1120: case V1160:
+            case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064 + 0x24;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
@@ -253,6 +267,9 @@ namespace offsets {
             // 13.60
             case V1360:
                 return 0xD9C064 + 0x24;
+            // 14.00 / 14.10
+            case V1400: case V1410:
+                return 0xDA4064 + 0x24;
             default:
                 printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
@@ -285,7 +302,7 @@ namespace offsets {
                 return 0x0D790F0; //0x0D79064 + 0x8C
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
             // 11.00 / 11.20 / 11.60
-            case V1100: case V1120: case V1160:
+            case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064 + 0x8C;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
@@ -299,6 +316,9 @@ namespace offsets {
             // 13.60
             case V1360:
                 return 0xD9C064 + 0x8C;
+            // 14.00 / 14.10
+            case V1400: case V1410:
+                return 0xDA4064 + 0x8C;
             default:
                 printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
@@ -334,7 +354,7 @@ namespace offsets {
                 return 0x2FA3510;
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
             // 11.00 / 11.20 / 11.60
-            case V1100: case V1120: case V1160:
+            case V1100: case V1120: case V1140: case V1160:
                 return 0x30B7510;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
@@ -348,6 +368,9 @@ namespace offsets {
             // 13.60
             case V1360:
                 return 0x314B510;
+            // 14.00 / 14.10
+            case V1400: case V1410:
+                return 0x315B510;
             default:
                 printf("Unsupported firmware version: 0x%x\n", getSystemSwVersion() & VERSION_MASK);
                 return -1;
