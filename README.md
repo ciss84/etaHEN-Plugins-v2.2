@@ -40,6 +40,21 @@ l'utilisateur ; testes sur l'hote (switch isole, build g++) : chaque version
 renvoie la bonne valeur, et un firmware non liste tombe toujours dans le
 `default` (`-1` + message), donc les garde-fous restent actifs.
 
+**4 fonctions supplementaires ajoutees** (table complete 1.00 -> 14.10,
+fournie par l'utilisateur) :
+- `text_base_delta()` -- `KERNEL_ADDRESS_TEXT_BASE`. **Signee** (negative) :
+  l'adresse reelle est `kernel_data_base + text_base_delta()`.
+- `bus_data_devices()` -- `KERNEL_ADDRESS_BUS_DATA_DEVICES`, addition classique.
+- `vmspace_p_root()` / `vmspace_vm_pmap()` -- `KERNEL_OFFSET_VMSPACE_*`. Ce
+  sont des offsets de champs **dans** la structure `vmspace`, pas relatifs a
+  `KERNEL_ADDRESS_DATA_BASE`.
+
+⚠️ **Dormantes** : aucun appelant existant (`hijacker.cpp`, `dbg.cpp`,
+`elf.cpp`...) ne les utilise encore. Ajoutees pretes a l'emploi si un besoin
+se presente. Testees sur l'hote pour plusieurs firmwares (1.00, 1.05, 2.00,
+6.00, 11.00, 11.40, 13.60, 14.00, 14.10) sans regression sur les 5 fonctions
+d'origine.
+
 ### `libhijacker/source/dbg.cpp` et `hijacker.cpp`
 Garde-fous : si le firmware n'est pas dans `offsets.cpp` (renvoie `-1`),
 le code **s'arrete proprement** au lieu de lire une adresse noyau invalide.
