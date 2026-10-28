@@ -1,10 +1,11 @@
-# etaHEN-Plugins — Etat des mises a jour firmware (11.00 -> 14.10)
+# etaHEN-Plugins-Loader-v3.00 — Etat des mises a jour firmware (11.00 -> 14.10)
 
 Ce document resume ce qui a ete mis a jour dans l'arbre `etaHEN-Plugins` pour
 supporter les firmwares recents, ce qui reste non verifie, et ce qui manque
 completement. A lire avant de flasher/tester sur console.
 
-> Rien ici n'a ete teste sur un vrai PS5. Les valeurs ajoutees viennent de
+> Fw 4.xx a 7.xx voir 8.xx ici tous a etait teste sur un vrai PS5. 
+> Fw 8.xx et superieur rien ici n'a ete teste sur un vrai PS5. Les valeurs ajoutees viennent de
 > sources publiques (portage etaHEN "unified", firmware-profiles.json,
 > ps5-payload-dev / ftpsrv self-prospero.c) et d'une table KERNEL_ADDRESS_*
 > fournie par l'utilisateur (11.40 et 14.00/14.10). Si un firmware plante,
