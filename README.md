@@ -234,7 +234,7 @@ the 4 listed above.
 
 For each gap, a precise piece of data is needed that I don't have:
 
-- **Pagertab 10.20-10.60 / 11.40 / 14.00-14.10**: the `pagertab_addr` value
+- **Pagertab 14.00-14.10**: the `pagertab_addr` value
   (offset from `KERNEL_ADDRESS_DATA_BASE`) for that specific firmware.
 - **SceShellCore pattern 13.xx / 14.xx**: a dump of `SceShellCore.elf` for
   that firmware, or directly the bytes around the patched function.

@@ -237,7 +237,7 @@ firmware sont les 4 listes ci-dessus.
 
 Pour chaque trou, il faut une donnee precise que je n'ai pas :
 
-- **Pagertab 10.20-10.60 / 11.40 / 14.00-14.10** : la valeur `pagertab_addr`
+- **Pagertab 14.00-14.10** : la valeur `pagertab_addr`
   (offset depuis `KERNEL_ADDRESS_DATA_BASE`) pour ce firmware precis.
 - **Pattern SceShellCore 13.xx / 14.xx** : un dump de `SceShellCore.elf` pour
   ce firmware, ou directement les octets autour de la fonction patchee.
