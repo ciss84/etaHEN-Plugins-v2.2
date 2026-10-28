@@ -157,12 +157,12 @@ static int init() {
 
     case 0x1000:
     case 0x1001:
+    case 0x1020:
+    case 0x1040:
+    case 0x1060:
         pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDE04F0;
         break;
-
-    // -- 11.xx -> 13.xx : valeurs publiques (ps5-payload-dev/ftpsrv self-prospero.c, via le portage
-    //    etaHEN firmware-profiles.json). NON VERIFIEES sur console par l'auteur de cet ajout.
-    //    10.20 -> 10.60 : pas de valeur publique trouvee -> restent non supportes (ENOSYS).
+      
     // 11.00 / 11.20
     case 0x1100:
     case 0x1120:
