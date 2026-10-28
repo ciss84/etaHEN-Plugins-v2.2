@@ -220,9 +220,9 @@ the 4 listed above.
 
 | Component | 11.xx | 12.xx | 13.xx | 14.xx |
 |---|---|---|---|---|
-| Kernel offsets (`offsets.cpp`) | ✅ (11.40 included) | ✅ | ✅ | ✅ |
+| Kernel offsets (`offsets.cpp`) | ✅ | ✅ | ✅ | ✅ |
 | Safety guards (`dbg.cpp`/`hijacker.cpp`) | ✅ | ✅ | ✅ | ✅ |
-| Pagertab (`selfpager.c`) | ⚠️ (except 11.40 ❌) | ✅ | ✅ | ❌ |
+| Pagertab (`selfpager.c`) | ✅ | ✅ | ✅ | ❌ |
 | SceShellCore patch | ✅ | ✅ | ⚠️ fallback only | ❌ |
 
 ⚠️ = works but with a known limitation (see section 1).

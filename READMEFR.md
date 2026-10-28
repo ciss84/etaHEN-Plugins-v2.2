@@ -223,9 +223,9 @@ firmware sont les 4 listes ci-dessus.
 
 | Composant | 11.xx | 12.xx | 13.xx | 14.xx |
 |---|---|---|---|---|
-| Offsets noyau (`offsets.cpp`) | ✅ (11.40 inclus) | ✅ | ✅ | ✅ |
+| Offsets noyau (`offsets.cpp`) | ✅ | ✅ | ✅ | ✅ |
 | Garde-fous (`dbg.cpp`/`hijacker.cpp`) | ✅ | ✅ | ✅ | ✅ |
-| Pagertab (`selfpager.c`) | ⚠️ (sauf 11.40 ❌) | ✅ | ✅ | ❌ |
+| Pagertab (`selfpager.c`) | ✅ | ✅ | ✅ | ❌ |
 | Patch SceShellCore | ✅ | ✅ | ⚠️ secours uniquement | ❌ |
 
 ⚠️ = fonctionne mais avec une limite connue (voir sections 1).
