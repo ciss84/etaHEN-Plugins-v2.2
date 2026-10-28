@@ -18,6 +18,8 @@ completely missing. Read this before flashing/testing on a console.
 
 On the PS5, via FTP:
 
+- **The `.plugin`** → `/data/etaHEN/plugins/` (etaHEN itself loads `.plugin`
+  files from this folder at startup)
 - **The config file** → `/data/PluginLoader/PluginLoader.ini`
 - **The `.prx` files** → `/data/PluginLoader/` (the path written in the
   `.ini` is relative to this folder, e.g. `prx/Example.prx` becomes

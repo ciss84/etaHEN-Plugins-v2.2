@@ -18,6 +18,8 @@ completement. A lire avant de flasher/tester sur console.
 
 Sur la PS5, via FTP :
 
+- **Le `.plugin`** → `/data/etaHEN/plugins/` (c'est etaHEN lui-meme qui
+  charge les `.plugin` depuis ce dossier au demarrage)
 - **Le fichier config** → `/data/PluginLoader/PluginLoader.ini`
 - **Les `.prx`** → `/data/PluginLoader/` (chemin ecrit dans le `.ini` est
   relatif a ce dossier, ex: `prx/Exemple.prx` devient
