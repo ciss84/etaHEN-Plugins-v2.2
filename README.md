@@ -16,51 +16,59 @@ completement. A lire avant de flasher/tester sur console.
 
 ## 0. Comment l'utiliser (placement des fichiers par FTP)
 
+⚠️ **Le format du fichier de config depend de la version du loader.**
+Verifie laquelle tu utilises avant de choisir la syntaxe ci-dessous.
+
+### Version actuelle (ce `Plugin-Loader-v3.00.zip`) : `PluginLoader.ini`
+
 Sur la PS5, via FTP :
 
-- **Le fichier config (`.toml`)** → `/data/PluginLoader/PluginLoader.toml`
-- **Les `.prx`** → `/data/PluginLoader/prx/` (meme dossier que le toml, chez
-  l'utilisateur ; ex: `/data/PluginLoader/prx/exemple.prx`)
+- **Le fichier config** → `/data/PluginLoader/PluginLoader.ini`
+- **Les `.prx`** → `/data/PluginLoader/` (chemin ecrit dans le `.ini` est
+  relatif a ce dossier, ex: `prx/FullBeachMenu-1.011.001.prx` devient
+  `/data/PluginLoader/prx/FullBeachMenu-1.011.001.prx`)
 
-Le chemin des `.prx` n'est pas fige par le code : c'est le `path = "..."` de
-chaque `[[plugin]]` dans le toml qui decide. Il faut juste que ce chemin
-corresponde exactement a l'endroit reel ou le `.prx` a ete depose en FTP.
-
-### Editer le toml avec Notepad2
+#### Editer le `.ini` avec Notepad2
 
 1. Connecte-toi en FTP sur la PS5, va dans `/data/PluginLoader/`.
-2. Fais un clic droit sur `PluginLoader.toml` -> "Edit" / "Open with" ->
-   **Notepad2** (ou telecharge le fichier, edite-le en local avec Notepad2,
-   puis reuploade-le au meme endroit).
-3. Un bloc `[[plugin]]` par jeu/PRX a charger. `title` = le Title ID du jeu
-   (`PPSAxxxxx` pour PS5, `CUSAxxxxx` pour PS4), `path` = ou se trouve le
-   `.prx` (relatif a `/data/PluginLoader/`, ou chemin absolu).
+2. Clic droit sur `PluginLoader.ini` -> "Edit" / "Open with" -> **Notepad2**
+   (ou telecharge-le, edite en local, reuploade au meme endroit).
+3. Syntaxe : une section `[TITLEID]` par jeu (`PPSAxxxxx` pour PS5,
+   `CUSAxxxxx` pour PS4), puis une ligne par `.prx` a charger sous cette
+   section : `chemin/du.prx:delai_en_frames` (`:delai` optionnel, 60 par
+   defaut = 1 seconde a 60fps). `;` ou `#` en debut de ligne = commentaire.
 
-Exemple avec un jeu PS5 (`PPSA`) et un jeu PS4 (`CUSA`) dans le meme toml :
+Exemple avec un jeu PS5 (`PPSA`) et un jeu PS4 (`CUSA`) dans le meme `.ini` :
 
-```toml
-# Copier dans /data/PluginLoader/PluginLoader.toml
-# path relatif => /data/PluginLoader/<path>  (chemin absolu accepte)
+```ini
+[PPSA04263]
+fakelib=true
+prx/FullBeachMenu-1.011.001.prx:60
 
-[[plugin]]
-title    = "CUSA00411"
-path     = "prx/BeachMenu157.prx"
-delay_ms = 10000      # defaut 10000
-inject   = true       # false = ignore
+[PPSA04264]
+fakelib=true
+prx/FullBeachMenu-1.011.001.prx:60
 
-[[plugin]]
-title    = "PPSA04263"
-path     = "prx/FullBeachMenu-1.011.001.prx"
-delay_ms = 10000      # defaut 10000
-inject   = true       # false = ignore
-fakelib  = true       # optionnel, PPSA seulement (defaut true)
+[CUSA00411]
+prx/BeachMenu157.prx:60
+
+[CUSA00419]
+prx/BeachMenu157.prx:60
 ```
 
-- `CUSA...` (PS4/backport) : pas de `fakelib` (ignore meme si ecrit).
-- `PPSA...` (PS5 natif) : `fakelib = true` par defaut, pas besoin de
-  l'ecrire sauf pour le desactiver (`fakelib = false`).
-- Deux `[[plugin]]` avec le **meme** `title` chargent deux `.prx`
-  differents pour le meme jeu (ex: un pour le LSO, un pour le menu).
+- `fakelib=true/false` : lu, mais **ignore automatiquement sur les `CUSA`**
+  (PS4) -- actif par defaut (`true`) sur les `PPSA` (PS5) sans avoir besoin
+  de l'ecrire, sauf pour le desactiver.
+- Plusieurs lignes `.prx` sous le meme `[TITLEID]` = plusieurs plugins
+  charges pour ce jeu (ex: un pour le LSO, un pour le menu).
+- Pas de cle `inject` ici : tout `.prx` liste sous une section est injecte.
+
+### Anciennes versions (v3.01, ploader+fakelib) : `PluginLoader.toml`
+
+Ces versions utilisaient un `.toml` avec une syntaxe `[[plugin]]` differente
+(`title=`, `path=`, `delay_ms=`, `inject=`...) place au meme endroit
+(`/data/PluginLoader/PluginLoader.toml`). Si tu es repasse sur une de ces
+versions, redemande-moi et je redonne l'exemple toml correspondant.
 
 ---
 
