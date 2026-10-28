@@ -1,4 +1,4 @@
-# etaHEN-Plugins-Loader-v3.00.1 — Etat des mises a jour firmware (4.00 -> 14.10)
+# etaHEN-Plugins-Loader-v3.01 — Etat des mises a jour firmware (4.00 -> 14.10)
 
 Ce document resume ce qui a ete mis a jour dans l'arbre `etaHEN-Plugins` pour
 supporter les firmwares recents, ce qui reste non verifie, et ce qui manque
@@ -38,17 +38,35 @@ Exemple avec un jeu PS5 (`PPSA`) et un jeu PS4 (`CUSA`) dans le meme `.ini` :
 ```ini
 [PPSA04263]
 fakelib=true
-prx/FullBeachMenu-1.011.001.prx:60
+prx/BeachMenu.prx:60
+or with LSO
+[PPSA04263]
+fakelib=true
+prx/LSOExemple.prx:60
+prx/BeachMenu.prx:600
 
 [PPSA04264]
 fakelib=true
-prx/FullBeachMenu-1.011.001.prx:60
+prx/BeachMenu.prx:60
+# Or with LSO
+[PPSA04264]
+fakelib=true
+prx/LSOExemple.prx:60
+prx/BeachMenu.prx:600
 
 [CUSA00411]
 prx/BeachMenu157.prx:60
+# Or with LSO
+[CUSA00411]
+prx/LSOPlugin.prx:60
+prx/BeachMenu157.prx:600
 
 [CUSA00419]
 prx/BeachMenu157.prx:60
+# Or with LSO
+[CUSA00419]
+prx/LSOPlugin.prx:60
+prx/BeachMenu157.prx:600
 ```
 
 - `fakelib=true/false` : lu, mais **ignore automatiquement sur les `CUSA`**
