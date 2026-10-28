@@ -169,10 +169,11 @@ static int init() {
         pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDF1940;
         break;
 
-    // 11.60
+    // 11.40 / 11.60
+    case 0x1140:
     case 0x1160:
-        pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDF1960;
-        break;
+      pagertab_addr = KERNEL_ADDRESS_DATA_BASE + 0xDF1960;
+      break;
 
     // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
     case 0x1200:
