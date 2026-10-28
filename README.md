@@ -67,6 +67,12 @@ prx/BeachMenu157.prx:60
 [CUSA00419]
 prx/LSOPlugin.prx:60
 prx/BeachMenu157.prx:600
+
+[CUSA03041]
+prx/Sheriff.prx:60
+
+[CUSA08519]
+prx/Sheriff.prx:60
 ```
 
 - `fakelib=true/false` : lu, mais **ignore automatiquement sur les `CUSA`**
