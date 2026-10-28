@@ -6,11 +6,11 @@
 
 cmake_minimum_required (VERSION 3.20)
 
-set(basename "Plugin-Loader-v3.01")
+set(basename "Plugin-Loader-v3.02")
 project(${basename} C CXX)
 
-set(PLUGIN_TITLE_ID "PLUG00301")
-set(PLUGIN_VERSION "3.01")
+set(PLUGIN_TITLE_ID "PLUG00302")
+set(PLUGIN_VERSION "3.02")
 
 # Language Standard Defaults
 set(CMAKE_C_STANDARD 17)

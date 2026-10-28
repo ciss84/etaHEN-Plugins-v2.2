@@ -1,4 +1,4 @@
-# etaHEN-Plugins-Loader-v3.01 — Firmware update status (4.00 -> 14.10)
+# etaHEN-Plugins-Loader-v3.02 — Firmware update status (4.00 -> 14.10)
 
 This document summarizes what has been updated in the `etaHEN-Plugins` tree
 to support recent firmwares, what is still unverified, and what is
