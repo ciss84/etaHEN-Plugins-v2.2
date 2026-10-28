@@ -143,7 +143,7 @@ namespace offsets {
                 allprocOffset = 0x2765D70;
                 break;
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.60
+            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 allprocOffset = 0x2875D70;
                 break;
@@ -203,7 +203,7 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x0D79064;
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.60
+            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
@@ -252,7 +252,7 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x0D79088; //0x0D79064 + 0x24
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.60
+            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064 + 0x24;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
@@ -301,7 +301,7 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x0D790F0; //0x0D79064 + 0x8C
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.60
+            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064 + 0x8C;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
