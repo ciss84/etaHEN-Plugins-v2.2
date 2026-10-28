@@ -14,6 +14,20 @@ completement. A lire avant de flasher/tester sur console.
 
 ---
 
+## 0. Comment l'utiliser (placement des fichiers par FTP)
+
+Sur la PS5, via FTP :
+
+- **Le fichier config (`.toml`)** → `/data/PluginLoader/PluginLoader.toml`
+- **Les `.prx`** → `/data/PluginLoader/` (meme dossier que le toml, chez
+  l'utilisateur ; ex: `/data/PluginLoader/(nom du prx).prx`)
+
+Le chemin des `.prx` n'est pas fige par le code : c'est le `path = "..."` de
+chaque `[[plugin]]` dans le toml qui decide. Il faut juste que ce chemin
+corresponde exactement a l'endroit reel ou le `.prx` a ete depose en FTP.
+
+---
+
 ## 1. Fichiers mis a jour et ce qu'ils couvrent
 
 ### `libhijacker/source/offsets.cpp`
