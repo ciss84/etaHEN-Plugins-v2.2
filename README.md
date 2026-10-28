@@ -20,11 +20,47 @@ Sur la PS5, via FTP :
 
 - **Le fichier config (`.toml`)** → `/data/PluginLoader/PluginLoader.toml`
 - **Les `.prx`** → `/data/PluginLoader/` (meme dossier que le toml, chez
-  l'utilisateur ; ex: `/data/PluginLoader/(nom du prx).prx`)
+  l'utilisateur ; ex: `/data/PluginLoader/FullBeachMenu-1.010.002.prx`)
 
 Le chemin des `.prx` n'est pas fige par le code : c'est le `path = "..."` de
 chaque `[[plugin]]` dans le toml qui decide. Il faut juste que ce chemin
 corresponde exactement a l'endroit reel ou le `.prx` a ete depose en FTP.
+
+### Editer le toml avec Notepad2
+
+1. Connecte-toi en FTP sur la PS5, va dans `/data/PluginLoader/`.
+2. Fais un clic droit sur `PluginLoader.toml` -> "Edit" / "Open with" ->
+   **Notepad2** (ou telecharge le fichier, edite-le en local avec Notepad2,
+   puis reuploade-le au meme endroit).
+3. Un bloc `[[plugin]]` par jeu/PRX a charger. `title` = le Title ID du jeu
+   (`PPSAxxxxx` pour PS5, `CUSAxxxxx` pour PS4), `path` = ou se trouve le
+   `.prx` (relatif a `/data/PluginLoader/`, ou chemin absolu).
+
+Exemple avec un jeu PS5 (`PPSA`) et un jeu PS4 (`CUSA`) dans le meme toml :
+
+```toml
+# Copier dans /data/PluginLoader/PluginLoader.toml
+# path relatif => /data/PluginLoader/<path>  (chemin absolu accepte)
+
+[[plugin]]
+title    = "CUSA00411"
+path     = "prx/BeachMenu157.prx"
+delay_ms = 10000      # defaut 10000
+inject   = true       # false = ignore
+
+[[plugin]]
+title    = "PPSA04263"
+path     = "prx/FullBeachMenu-1.011.001.prx"
+delay_ms = 10000      # defaut 10000
+inject   = true       # false = ignore
+fakelib  = true       # optionnel, PPSA seulement (defaut true)
+```
+
+- `CUSA...` (PS4/backport) : pas de `fakelib` (ignore meme si ecrit).
+- `PPSA...` (PS5 natif) : `fakelib = true` par defaut, pas besoin de
+  l'ecrire sauf pour le desactiver (`fakelib = false`).
+- Deux `[[plugin]]` avec le **meme** `title` chargent deux `.prx`
+  differents pour le meme jeu (ex: un pour le LSO, un pour le menu).
 
 ---
 
