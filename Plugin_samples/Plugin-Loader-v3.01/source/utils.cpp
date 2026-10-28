@@ -258,11 +258,21 @@ GameInjectorConfig parse_injector_config()
 						size_t vs = val.find_first_not_of(" \t");
 						if (vs != std::string::npos) val = val.substr(vs);
 						bool enabled = !(val == "false" || val == "0");
-						config.fakelib_enabled[current_tid] = enabled;
-						plugin_log("Config: [%s] fakelib = %s", current_tid.c_str(), enabled ? "true" : "false");
+						if (current_tid == "DEFAULT")
+						{
+							// [DEFAULT] fakelib=... : valeur globale de secours,
+							// pas une entree par Title ID.
+							config.default_fakelib = enabled;
+							plugin_log("Config: [DEFAULT] fakelib (global) = %s", enabled ? "true" : "false");
+						}
+						else
+						{
+							config.fakelib_enabled[current_tid] = enabled;
+							plugin_log("Config: [%s] fakelib = %s", current_tid.c_str(), enabled ? "true" : "false");
+						}
 					}
 				}
-				else if (!current_tid.empty())
+				else if (!current_tid.empty() && current_tid != "DEFAULT")
 				{
 					size_t colon_pos = line.find(':');
 					std::string prx_file;

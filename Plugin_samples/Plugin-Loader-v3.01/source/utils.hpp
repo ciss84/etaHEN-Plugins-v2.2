@@ -308,6 +308,11 @@ struct PRXConfig {
 struct GameInjectorConfig {
 	std::map<std::string, std::vector<PRXConfig>> games;
 	std::map<std::string, bool> fakelib_enabled;
+	// Valeur lue dans [DEFAULT] fakelib=... (section globale, PAS un Title ID).
+	// Utilisee quand aucune section [TITLEID] precise n'a sa propre ligne
+	// fakelib=. Defaut : true (comportement d'avant, inchange si [DEFAULT]
+	// n'est pas present dans le .ini).
+	bool default_fakelib = true;
 };
 
 void plugin_log(const char* fmt, ...);
