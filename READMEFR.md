@@ -172,7 +172,7 @@ Table `pagertab_addr` par firmware (necessaire pour le dechiffrement des SELF).
 | Plage | Statut |
 |---|---|
 | 1.00 -> 10.01 | deja presente avant mes ajouts |
-| **10.20 -> 10.60** | ❌ **absent** — aucune valeur publique trouvee -> `ENOSYS` |
+| 10.20 / 10.60 | ✅ `0xDE04F0` |
 | 11.00 / 11.20 | ✅ `0xDF1940` |
 | 11.40 / 11.60 | ✅ `0xDF1960` |
 | 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70 | ✅ `0xDF2860` |
