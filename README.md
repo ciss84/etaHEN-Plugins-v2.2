@@ -173,8 +173,7 @@ duplicate to maintain).
 | 1.00 -> 10.01 | already present before my additions |
 | **10.20 -> 10.60** | ❌ **missing** — no public value found -> `ENOSYS` |
 | 11.00 / 11.20 | ✅ `0xDF1940` |
-| **11.40** | ❌ **missing** — the provided table doesn't cover this structure, and the pagertab already splits 11.00/11.20 from 11.60 -> no reliable value can be inferred -> `ENOSYS` |
-| 11.60 | ✅ `0xDF1960` |
+| 11.40 / 11.60 | ✅ `0xDF1960` |
 | 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70 | ✅ `0xDF2860` |
 | 13.00 / 13.20 | ✅ `0xE038D0` |
 | 13.40 / 13.42 / 13.60 | ✅ `0xE03910` |
