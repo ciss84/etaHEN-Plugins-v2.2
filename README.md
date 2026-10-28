@@ -1,4 +1,4 @@
-# etaHEN-Plugins-Loader-v3.00 — Etat des mises a jour firmware (11.00 -> 14.10)
+# etaHEN-Plugins-Loader-v3.00.1 — Etat des mises a jour firmware (4.00 -> 14.10)
 
 Ce document resume ce qui a ete mis a jour dans l'arbre `etaHEN-Plugins` pour
 supporter les firmwares recents, ce qui reste non verifie, et ce qui manque
@@ -16,17 +16,12 @@ completement. A lire avant de flasher/tester sur console.
 
 ## 0. Comment l'utiliser (placement des fichiers par FTP)
 
-⚠️ **Le format du fichier de config depend de la version du loader.**
-Verifie laquelle tu utilises avant de choisir la syntaxe ci-dessous.
-
-### Version actuelle (ce `Plugin-Loader-v3.00.zip`) : `PluginLoader.ini`
-
 Sur la PS5, via FTP :
 
 - **Le fichier config** → `/data/PluginLoader/PluginLoader.ini`
 - **Les `.prx`** → `/data/PluginLoader/` (chemin ecrit dans le `.ini` est
-  relatif a ce dossier, ex: `prx/FullBeachMenu-1.011.001.prx` devient
-  `/data/PluginLoader/prx/FullBeachMenu-1.011.001.prx`)
+  relatif a ce dossier, ex: `prx/Exemple.prx` devient
+  `/data/PluginLoader/prx/Exemple.prx`)
 
 #### Editer le `.ini` avec Notepad2
 
