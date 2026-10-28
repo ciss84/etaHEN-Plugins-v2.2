@@ -81,14 +81,6 @@ prx/Sheriff.prx:60
 - Plusieurs lignes `.prx` sous le meme `[TITLEID]` = plusieurs plugins
   charges pour ce jeu (ex: un pour le LSO, un pour le menu).
 - Pas de cle `inject` ici : tout `.prx` liste sous une section est injecte.
-
-### Anciennes versions (v3.01, ploader+fakelib) : `PluginLoader.toml`
-
-Ces versions utilisaient un `.toml` avec une syntaxe `[[plugin]]` differente
-(`title=`, `path=`, `delay_ms=`, `inject=`...) place au meme endroit
-(`/data/PluginLoader/PluginLoader.toml`). Si tu es repasse sur une de ces
-versions, redemande-moi et je redonne l'exemple toml correspondant.
-
 ---
 
 ## 1. Fichiers mis a jour et ce qu'ils couvrent
