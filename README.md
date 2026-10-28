@@ -19,8 +19,8 @@ completement. A lire avant de flasher/tester sur console.
 Sur la PS5, via FTP :
 
 - **Le fichier config (`.toml`)** → `/data/PluginLoader/PluginLoader.toml`
-- **Les `.prx`** → `/data/PluginLoader/` (meme dossier que le toml, chez
-  l'utilisateur ; ex: `/data/PluginLoader/FullBeachMenu-1.010.002.prx`)
+- **Les `.prx`** → `/data/PluginLoader/prx/` (meme dossier que le toml, chez
+  l'utilisateur ; ex: `/data/PluginLoader/prx/exemple.prx`)
 
 Le chemin des `.prx` n'est pas fige par le code : c'est le `path = "..."` de
 chaque `[[plugin]]` dans le toml qui decide. Il faut juste que ce chemin
