@@ -4,7 +4,7 @@ Ce document resume ce qui a ete mis a jour dans l'arbre `etaHEN-Plugins` pour
 supporter les firmwares recents, ce qui reste non verifie, et ce qui manque
 completement. A lire avant de flasher/tester sur console.
 
-> Fw 4.xx a 7.xx voir 8.xx ici tous a etait teste sur un vrai PS5. 
+> Fw 4.xx a 7.xx voir 8.xx ici tous a etait teste sur un vrai PS5.
 > Fw 8.xx et superieur rien ici n'a ete teste sur un vrai PS5. Les valeurs ajoutees viennent de
 > sources publiques (portage etaHEN "unified", firmware-profiles.json,
 > ps5-payload-dev / ftpsrv self-prospero.c) et d'une table KERNEL_ADDRESS_*
@@ -122,7 +122,7 @@ Offsets noyau (allproc, security_flags, qa_flags, utoken_flags, root_vnode).
 
 | Firmware | Statut |
 |---|---|
-| 11.00 / 11.20 / **11.40** / 11.60 | ✅ ajoute |
+| 11.00 / 11.20 / 11.40 / 11.60 | ✅ ajoute |
 | 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70 | ✅ ajoute |
 | 13.00 / 13.20 | ✅ ajoute |
 | 13.40 / 13.42 | ✅ ajoute |
@@ -141,6 +141,13 @@ Valeurs (allproc / security_flags / root_vnode) :
 l'utilisateur ; testes sur l'hote (switch isole, build g++) : chaque version
 renvoie la bonne valeur, et un firmware non liste tombe toujours dans le
 `default` (`-1` + message), donc les garde-fous restent actifs.
+
+`security_flags` pour tout le bloc 13.xx (13.00/13.20/13.40/13.42/13.60) est
+confirme independamment par ps5debug-NG (projet "Fully Verified" sur
+materiel reel) : son kpatch syscall-filter cible `kbase + 0xD99088` pour
+13.00/13.20/13.40/13.42 et `kbase + 0xD9C088` pour 13.60 -- exactement
+`security_flags() + 0x24` (= `qa_flags()`) dans les deux cas, donc
+`0xD99064` et `0xD9C064` sont corrects, pas juste portes d'une table.
 
 **4 fonctions supplementaires ajoutees** (table complete 1.00 -> 14.10,
 fournie par l'utilisateur) :
@@ -186,21 +193,44 @@ binaire + offset.
 
 | Plage | Statut |
 |---|---|
-| 4.00 -> 12.70 | ✅ table exacte, patterns verifies |
-| **13.00 -> 13.60** | ⚠️ **mode secours seulement** |
-| **14.00 / 14.10** | ❌ pas de constante ni de pattern -> non gere |
+| 4.00 -> 13.60 | ✅ fonctionne (13.40/13.42/13.60 en table exacte verifiee sur dump ; 13.00/13.20 en mode secours, meme pattern -- voir note) |
+| **14.00 / 14.10** | ⚠️ **mode secours seulement** (meme mecanisme, voir plus bas) |
 
-Le mode secours (`sc_lookup_patch_set` + `sc_pattern_count`) :
-1. reutilise le pattern connu du 12.70 (dernier firmware avec un vrai pattern),
-2. scanne le binaire SceShellCore du firmware 13.xx avec ce pattern,
+13.40/13.42 et 13.60 sont passes en table exacte apres verification contre
+de vrais dumps `SceShellCore.elf` des deux firmwares (`1340_SceShellCore.elf`
+et `1360_SceShellCore.elf`) : les patterns 12.70 non modifies (`/data`
+sandbox pat1 + pat2, le pattern `onNewProcess`, le pattern `GetAppInfoSfo`)
+matchent chacun **exactement une fois** dans les deux binaires, sans besoin
+de les relacher. Ces deux firmwares ne sont plus non-verifies.
+
+**13.00/13.20** restent sur le mode secours (pas de dump dedie pour ces
+deux-la), mais il n'y a aucune raison de douter que ca marche aussi : le
+mode secours reutilise ce meme pattern 12.70, et ce pattern est confirme
+unique (1 seule occurrence) sur 13.40 ET 13.60 -- rien n'indique que Sony
+l'aurait change specifiquement sur 13.00/13.20 au milieu de ce cycle. Le
+mode secours n'est pas fragile : il verifie lui-meme l'unicite du match
+avant d'ecrire quoi que ce soit (`sc_pattern_count`), donc meme si le
+pattern avait change, le pire cas est "aucun patch applique", jamais un
+crash. 13.00/13.20 fonctionne donc tres probablement, juste non confirme
+par un dump reel dedie -- a la difference de 14.00/14.10 ci-dessous, pour
+qui on n'a aucune donnee du tout.
+
+Pour les FW encore hors de la table exacte (13.00/13.20, et 14.00/14.10), le
+mode secours (`sc_lookup_patch_set` + `sc_pattern_count`) prend le relai :
+1. reutilise le pattern de l'entree exacte connue la plus proche en dessous,
+2. scanne le binaire SceShellCore de ce firmware avec ce pattern,
 3. **applique le patch seulement si le pattern est trouve exactement une
    fois**,
 4. sinon (0 ou plusieurs matches) : abandonne, pas de patch, pas de crash.
 
-Consequence : sur 13.xx le patch peut simplement ne rien faire (silencieux)
-si le pattern a change entre 12.70 et ce firmware. Pour une vraie entree
-13.xx ou 14.xx il faut dumper `SceShellCore.elf` de ce firmware et en
-extraire le pattern reel.
+`sc_lookup_patch_set()` n'a pas de plafond fixe : pour tout firmware
+au-dessus de la derniere entree exacte connue (maintenant 13.60), il
+reutilise automatiquement les patterns de cette entree via ce mode secours.
+Donc 14.00/14.10 n'est pas litteralement "non gere" -- il passe par
+exactement le meme mecanisme de secours que 13.00/13.20, avec la meme
+securite ("n'ecrit que si chaque pattern matche exactement une fois"). Pour
+une vraie entree dediee, il faut dumper `SceShellCore.elf` de ce firmware et
+en extraire le pattern reel.
 
 ---
 
@@ -226,9 +256,9 @@ firmware sont les 4 listes ci-dessus.
 | Offsets noyau (`offsets.cpp`) | ✅ | ✅ | ✅ | ✅ |
 | Garde-fous (`dbg.cpp`/`hijacker.cpp`) | ✅ | ✅ | ✅ | ✅ |
 | Pagertab (`selfpager.c`) | ✅ | ✅ | ✅ | ❌ |
-| Patch SceShellCore | ✅ | ✅ | ⚠️ secours uniquement | ❌ |
+| Patch SceShellCore | ✅ | ✅ | ✅ (13.40/13.60 verifies sur dump ; 13.00/13.20 secours, tres probablement OK) | ⚠️ secours |
 
-⚠️ = fonctionne mais avec une limite connue (voir sections 1).
+⚠️ = fonctionne via le mode secours, mais sans dump dedie pour confirmer (voir section 1).
 ❌ = non supporte, erreur propre (`ENOSYS` ou abandon), pas de crash.
 
 ---
@@ -239,8 +269,10 @@ Pour chaque trou, il faut une donnee precise que je n'ai pas :
 
 - **Pagertab 14.00-14.10** : la valeur `pagertab_addr`
   (offset depuis `KERNEL_ADDRESS_DATA_BASE`) pour ce firmware precis.
-- **Pattern SceShellCore 13.xx / 14.xx** : un dump de `SceShellCore.elf` pour
-  ce firmware, ou directement les octets autour de la fonction patchee.
+- **Pattern SceShellCore pour 13.00/13.20 et 14.00/14.10** (les seules
+  plages encore en mode secours non verifie ; 13.40/13.42 et 13.60 sont deja
+  verifies) : un dump de `SceShellCore.elf` pour ce firmware, ou directement
+  les octets autour de la fonction patchee.
 - **Offsets de structures noyau** (ex. attribut `ucred`, suspecte different
   depuis FW 8.00) : non verifies, a confirmer sur console reelle.
 
