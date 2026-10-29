@@ -215,7 +215,10 @@ namespace offsets {
             // 13.40 / 13.42
             case V1340: case V1342:
                 return 0xD99064;
-            // 13.60
+            // 13.60 -- CONFIRME independamment par ps5debug-NG (projet "Fully
+            // Verified" sur materiel reel) : son kpatch syscall-filter pour
+            // FW 13.60 cible kbase + 0xD9C088 = security_flags() + 0x24 (= qa_flags()),
+            // donc 0xD9C064 est valide, pas juste porte d'une table.
             case V1360:
                 return 0xD9C064;
             // 14.00 / 14.10
@@ -353,7 +356,7 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x2FA3510;
             // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.60
+            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0x30B7510;
             // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
