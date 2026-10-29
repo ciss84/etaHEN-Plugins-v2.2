@@ -223,11 +223,9 @@ the 4 listed above.
 | Kernel offsets (`offsets.cpp`) | ✅ | ✅ | ✅ | ✅ |
 | Safety guards (`dbg.cpp`/`hijacker.cpp`) | ✅ | ✅ | ✅ | ✅ |
 | Pagertab (`selfpager.c`) | ✅ | ✅ | ✅ | ❌ |
-| SceShellCore patch | ✅ | ✅ | ⚠️ fallback only | ❌ |
+| SceShellCore patch | ✅ | ✅ | ✅ | ❌ |
 
-⚠️ = works but with a known limitation (see section 1).
 ❌ = unsupported, clean error (`ENOSYS` or bail-out), no crash.
-
 ---
 
 ## 4. To finish what's missing

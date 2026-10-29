@@ -5,8 +5,10 @@
 //  Porté depuis etaHEN (cpp_service.cpp / util daemon)
 //  A inclure depuis hijacker/patch_shellcore.hpp (via utils.hpp)
 //  IMPORTANT: inclure APRES hijacker/hijacker.hpp
-//  FW supportés : 4.xx → 12.xx (table exacte)
-//                 13.xx et plus : patterns de la dernière entrée connue (secours, voir
+//  FW supportés : 4.xx → 13.60 (table exacte ; 13.40/13.42 et 13.60 verifies
+//                 contre des dumps reels 1340_SceShellCore.elf et
+//                 1360_SceShellCore.elf)
+//                 14.xx et plus : patterns de la dernière entrée connue (secours, voir
 //                 sc_lookup_patch_set / sc_find_on_new_process) — non verifié sur binaire
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -344,6 +346,32 @@ static const sc_patch_set sc_patch_table[] = {
         "e8 ?? ?? e3 00 83 f8 01 0f 85",
         "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
     },
+    // 13.40 / 13.42 -- VERIFIE contre un dump reel de SceShellCore 13.40
+    // (1340_SceShellCore.elf, segment text file offset 0x4000, taille
+    // 0x1961b6c) : pat1 matche 1 seule fois (offset texte 0x6dc1c9), pat2
+    // (identique au pattern 12.70, PAS besoin de le relacher) matche 1 seule
+    // fois (offset texte 0xa85f2e). 13.42 suppose identique a 13.40 (meme
+    // convention que pour les offsets noyau security_flags/qa_flags/etc, non
+    // dumpe separement). Le checker matche 23 fois (non unique, non bloquant
+    // comme pour toutes les autres entrees).
+    {
+        SC_V1340, SC_V1342,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
+        "e8 ?? ?? e3 00 83 f8 01 0f 85",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
+    },
+    // 13.60 -- VERIFIE contre un dump reel de SceShellCore 13.60
+    // (1360_SceShellCore.elf, segment text file offset 0x4000, taille
+    // 0x19626fc) : pat1 matche 1 seule fois (offset texte 0x6dcd79), pat2
+    // (identique au pattern 12.70, PAS besoin de le relacher) matche 1 seule
+    // fois (offset texte 0xa86a5e). Checker 23 matches (non unique, non
+    // bloquant, comme pour toutes les autres entrees).
+    {
+        SC_V1360, SC_V1360,
+        "e8 ?? ?? ?? 01 85 c0 75 0d e8 ?? ?? ?? 01 85 c0 0f 84 17",
+        "e8 ?? ?? e3 00 83 f8 01 0f 85",
+        "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 81 ec c8 01 00 00 4c 8b",
+    },
 };
 
 // ── Recherche du jeu de patterns pour un FW ──────────────────────────────────
@@ -393,8 +421,11 @@ static const sc_newproc_pattern sc_newproc_table[] = {
         "55 48 89 e5 41 57 41 56 41 55 41 54 53 50 49 89 fd bf 18 00 00 00 49 89 d7 49 89 f4 e8 ?? ?? ?? ??",
     },
     {
-        // 12.xx
-        SC_V1200, SC_V1270,
+        // 12.xx -- meme pattern confirme unique sur les dumps 13.40 reels
+        // (offset texte 0x6f5b60) et 13.60 (offset texte 0x6f6710), donc
+        // l'intervalle est etendu jusqu'a 13.60 au lieu de retomber sur le
+        // mode secours.
+        SC_V1200, SC_V1360,
         "55 48 89 e5 41 57 41 56 41 55 41 54 53 48 83 ec 18 49 89 fd bf 18 00 00 00 49 89 d6 49 89 f4 e8 ?? ?? ?? ??",
     },
 };
@@ -470,7 +501,7 @@ static const sc_getappinfo_pattern sc_getappinfo_table[] = {
     {
         "49 8b 55 10 48 8b bd ?? ?? ?? ?? 48 8b 8d ?? ?? ?? ?? 48 8d 75 ?? e8 ?? ?? ?? ?? 41 89 c6",
         22,
-        "12.xx",
+        "12.xx-13.60 (confirme sur dumps reels 13.40 offset 0x6ca3e6 et 13.60 offset 0x6caf96)",
     },
 };
 
