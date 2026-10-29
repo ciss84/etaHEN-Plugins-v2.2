@@ -62,11 +62,6 @@ static constexpr uint32_t V1001 = 0x10010000;
 static constexpr uint32_t V1020 = 0x10200000;
 static constexpr uint32_t V1040 = 0x10400000;
 static constexpr uint32_t V1060 = 0x10600000;
-// 11.xx -> 13.xx : valeurs publiques (portage etaHEN, firmware-profiles.json).
-// NON VERIFIEES sur console par l'auteur de cet ajout : seule la source indique
-// "community-confirmed" pour 11.20, 12.40, 13.40 et 13.60.
-// 11.40 : table KERNEL_ADDRESS_* fournie par l'utilisateur (meme bucket noyau
-// que 11.00/11.20/11.60 pour allproc/security_flags/root_vnode) -> ajoute ci-dessous.
 static constexpr uint32_t V1100 = 0x11000000;
 static constexpr uint32_t V1120 = 0x11200000;
 static constexpr uint32_t V1140 = 0x11400000;
@@ -82,8 +77,6 @@ static constexpr uint32_t V1320 = 0x13200000;
 static constexpr uint32_t V1340 = 0x13400000;
 static constexpr uint32_t V1342 = 0x13420000;
 static constexpr uint32_t V1360 = 0x13600000;
-// 14.xx : table KERNEL_ADDRESS_* fournie par l'utilisateur. NON VERIFIE sur
-// console par l'auteur de cet ajout.
 static constexpr uint32_t V1400 = 0x14000000;
 static constexpr uint32_t V1410 = 0x14100000;
 
@@ -142,28 +135,21 @@ namespace offsets {
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 allprocOffset = 0x2765D70;
                 break;
-            // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 allprocOffset = 0x2875D70;
                 break;
-            // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
                 allprocOffset = 0x2885E00;
                 break;
-            // 13.00 / 13.20
             case V1300: case V1320:
                 allprocOffset = 0x28C5E00;
                 break;
-            // 13.40 / 13.42
             case V1340: case V1342:
                 allprocOffset = 0x28C9E80;
                 break;
-            // 13.60
             case V1360:
                 allprocOffset = 0x28C9E80;
                 break;
-            // 14.00 / 14.10
             case V1400: case V1410:
                 allprocOffset = 0x28D9EA0;
                 break;
@@ -202,26 +188,16 @@ namespace offsets {
                 return 0x0D73064;
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x0D79064;
-            // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064;
-            // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
                 return 0xD83064;
-            // 13.00 / 13.20
             case V1300: case V1320:
                 return 0xD99064;
-            // 13.40 / 13.42
             case V1340: case V1342:
                 return 0xD99064;
-            // 13.60 -- CONFIRME independamment par ps5debug-NG (projet "Fully
-            // Verified" sur materiel reel) : son kpatch syscall-filter pour
-            // FW 13.60 cible kbase + 0xD9C088 = security_flags() + 0x24 (= qa_flags()),
-            // donc 0xD9C064 est valide, pas juste porte d'une table.
             case V1360:
                 return 0xD9C064;
-            // 14.00 / 14.10
             case V1400: case V1410:
                 return 0xDA4064;
             default:
@@ -254,23 +230,16 @@ namespace offsets {
                 return 0x0D73088; //0x0D73064 + 0x24
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x0D79088; //0x0D79064 + 0x24
-            // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064 + 0x24;
-            // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
                 return 0xD83064 + 0x24;
-            // 13.00 / 13.20
             case V1300: case V1320:
                 return 0xD99064 + 0x24;
-            // 13.40 / 13.42
             case V1340: case V1342:
                 return 0xD99064 + 0x24;
-            // 13.60
             case V1360:
                 return 0xD9C064 + 0x24;
-            // 14.00 / 14.10
             case V1400: case V1410:
                 return 0xDA4064 + 0x24;
             default:
@@ -303,23 +272,16 @@ namespace offsets {
                 return 0x0D730F0; //0x0D73064 + 0x8C
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x0D790F0; //0x0D79064 + 0x8C
-            // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0xD8C064 + 0x8C;
-            // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
                 return 0xD83064 + 0x8C;
-            // 13.00 / 13.20
             case V1300: case V1320:
                 return 0xD99064 + 0x8C;
-            // 13.40 / 13.42
             case V1340: case V1342:
                 return 0xD99064 + 0x8C;
-            // 13.60
             case V1360:
                 return 0xD9C064 + 0x8C;
-            // 14.00 / 14.10
             case V1400: case V1410:
                 return 0xDA4064 + 0x8C;
             default:
@@ -355,23 +317,16 @@ namespace offsets {
                 return 0x2FDB510;
             case V1000: case V1001: case V1020: case V1040: case V1060:
                 return 0x2FA3510;
-            // -- 11.xx -> 13.xx (valeurs publiques, NON VERIFIEES) --
-            // 11.00 / 11.20 / 11.40 / 11.60
             case V1100: case V1120: case V1140: case V1160:
                 return 0x30B7510;
-            // 12.00 / 12.02 / 12.20 / 12.40 / 12.60 / 12.70
             case V1200: case V1202: case V1220: case V1240: case V1260: case V1270:
                 return 0x30D7510;
-            // 13.00 / 13.20
             case V1300: case V1320:
                 return 0x3133510;
-            // 13.40 / 13.42
             case V1340: case V1342:
                 return 0x3137510;
-            // 13.60
             case V1360:
                 return 0x314B510;
-            // 14.00 / 14.10
             case V1400: case V1410:
                 return 0x315B510;
             default:
