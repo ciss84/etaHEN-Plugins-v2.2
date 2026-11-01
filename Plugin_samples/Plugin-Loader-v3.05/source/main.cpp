@@ -379,13 +379,39 @@ static void inject_into_game(pid_t pid, const char *title_id,
     // reutilise le pid pour un jeu relance.
     HookSession hook_session;
 
+    // Les titres PS4 (BC, title_id CUSA*/SCUS*) tournent sous la couche de
+    // compatibilite PS4->PS5 : sceKernelSuspendProcess() y semble moins fiable
+    // / moins "immediat" que sur un titre PS5 natif (PPSA*). Avec les memes
+    // delais que pour PPSA, une ecriture "update" du 2e+ PRX peut arriver
+    // pendant que le process n'est pas encore vraiment suspendu -> ecriture
+    // concurrente avec le thread du jeu -> crash/corruption observee
+    // uniquement en multi-PRX sur PS4 ("ps5 impec, ps4 double prx bug").
+    // Plutot que de changer de mecanisme (le shellcode auto_load/BUILDER_
+    // TEMPLATE_AUTO s'est revele casse a la desassemblage - jl vers une
+    // adresse en plein milieu d'une instruction), on garde la boucle
+    // suspend/resume/overwrite manuelle existante mais on lui donne une
+    // marge de securite plus large sur PS4 BC.
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
+    plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
+               title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
+               is_ps4_bc ? "renforcees (x2)" : "normales");
+
+    // Delai de base avant la toute premiere ecriture (apres la 1ere suspension).
+    const useconds_t INITIAL_SUSPEND_SETTLE_US = is_ps4_bc ? 1500000 : 750000;
+    // Temps laisse au jeu pour charger le PRX avant de re-suspendre pour le suivant.
+    const unsigned int PRX_LOAD_WAIT_SECONDS   = is_ps4_bc ? 5 : 3;
+    // Marge de stabilisation avant l'ecriture "update" du PRX suivant.
+    const useconds_t NEXT_WRITE_SETTLE_US      = is_ps4_bc ? 5000000 : 2500000;
+    // Marge avant le resume final.
+    const useconds_t FINAL_RESUME_SETTLE_US    = is_ps4_bc ? 1000000 : 500000;
+
     if (hijacker) {
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);
+        usleep(INITIAL_SUSPEND_SETTLE_US);
 
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -398,14 +424,14 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
                 sceKernelPrepareToResumeProcess(pid);
                 sceKernelResumeProcess(pid);
-                
-                // Attends que le PRX se charge (~2-3 secondes)
-                sleep(3);
-                
+
+                // Attends que le PRX se charge (plus long sur PS4 BC)
+                sleep(PRX_LOAD_WAIT_SECONDS);
+
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
                     sceKernelSuspendProcess(pid);
-                    usleep(2500000);
+                    usleep(NEXT_WRITE_SETTLE_US);
                 }
             } else {
                 plugin_log("[PLT] FAILED to hook: %s", prx.path.c_str());
@@ -413,7 +439,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         // Final resume
-        usleep(500000);
+        usleep(FINAL_RESUME_SETTLE_US);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
 
@@ -456,7 +482,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 int main()
 {
     //plugin_log("=== PRX LOADER v3.05 + BACKPORK ===");
-    plugin_log("===SSHADOWMOD BACKPORK LOADER v3.05===");   
+    plugin_log("===SSHADOWMOD BACKPORK LOADER v3.05===");    
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
