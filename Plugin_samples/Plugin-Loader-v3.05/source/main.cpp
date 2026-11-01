@@ -19,6 +19,13 @@
 #define IOVEC_ENTRY(x) {x ? (char *)x : 0, x ? strlen(x) + 1 : 0}
 #define IOVEC_SIZE(x)  (sizeof(x) / sizeof(struct iovec))
 
+// Delai mini apres la fin/cleanup d'un jeu avant que le loader soit pret a
+// traiter un relancement. Sans ca, un quit+relaunch tres rapide peut crasher
+// : le kernel reutilise parfois le pid presque immediatement et/ou le
+// process relance pas encore totalement stabilise (PLT table, sandbox) cote
+// kernel au moment ou le loader essaie deja de s'attacher dessus.
+#define RELAUNCH_COOLDOWN_SECONDS 3
+
 typedef struct app_info {
     uint32_t app_id;
     uint64_t unknown1;
@@ -435,6 +442,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
     if (fakelib_mount)
         cleanup_after_game(pid, sandbox_id, fakelib_mount);
 
+    // ── 5. Cooldown anti quit+relaunch-trop-vite ──────────────────────────
+    plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
+    sleep(RELAUNCH_COOLDOWN_SECONDS);
+
     plugin_log("Game %s closed - ready for next launch", title_id);
 }
 
@@ -570,6 +581,8 @@ int main()
                 if (fml) {
                     wait_for_pid_exit(game_pid);
                     cleanup_after_game(game_pid, sid, fml);
+                    plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
+                    sleep(RELAUNCH_COOLDOWN_SECONDS);
                 }
                 continue;
             }
