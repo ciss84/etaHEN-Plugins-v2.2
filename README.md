@@ -40,41 +40,41 @@ Example with a PS5 game (`PPSA`) and a PS4 game (`CUSA`) in the same `.ini`:
 ```ini
 [PPSA04263]
 fakelib=true
-prx/BeachMenu.prx:60
+prx/BeachMenu.prx:120
 or with LSO
 [PPSA04263]
 fakelib=true
-prx/LSOExemple.prx:60
-prx/BeachMenu.prx:600
+prx/LSOExemple.prx:120
+prx/BeachMenu.prx:800
 
 [PPSA04264]
 fakelib=true
-prx/BeachMenu.prx:60
+prx/BeachMenu.prx:120
 # Or with LSO
 [PPSA04264]
 fakelib=true
-prx/LSOExemple.prx:60
-prx/BeachMenu.prx:600
+prx/LSOExemple.prx:120
+prx/BeachMenu.prx:800
 
 [CUSA00411]
-prx/BeachMenu157.prx:60
+prx/BeachMenu157.prx:120
 # Or with LSO
 [CUSA00411]
-prx/LSOPlugin.prx:60
-prx/BeachMenu157.prx:600
+prx/LSOPlugin.prx:120
+prx/BeachMenu157.prx:800
 
 [CUSA00419]
-prx/BeachMenu157.prx:60
+prx/BeachMenu157.prx:120
 # Or with LSO
 [CUSA00419]
-prx/LSOPlugin.prx:60
-prx/BeachMenu157.prx:600
+prx/LSOPlugin.prx:120
+prx/BeachMenu157.prx:800
 
 [CUSA03041]
-prx/Sheriff.prx:60
+prx/Sheriff.prx:120
 
 [CUSA08519]
-prx/Sheriff.prx:60
+prx/Sheriff.prx:120
 ```
 
 - `fakelib=true/false`: read, but **automatically ignored on `CUSA`** (PS4)
