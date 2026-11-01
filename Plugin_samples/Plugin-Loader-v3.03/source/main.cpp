@@ -365,6 +365,13 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
     int success_count = 0;
 
+    // Etat de hook scope a CETTE session d'injection (ce pid, ce process).
+    // Partage entre tous les PRX de la boucle ci-dessous (voulu : le 2e+ PRX
+    // doit faire un "update" sur le meme hook), mais jamais reutilise pour un
+    // autre appel a inject_into_game -> plus de collision si le kernel
+    // reutilise le pid pour un jeu relance.
+    HookSession hook_session;
+
     if (hijacker) {
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
@@ -378,7 +385,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
             uintptr_t stuff_addr = 0;
 
-            if (HookGame(hijacker, text_base, prx.path.c_str(), false, prx.frame_delay, &stuff_addr)) {
+            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, prx.frame_delay, &stuff_addr)) {
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
 

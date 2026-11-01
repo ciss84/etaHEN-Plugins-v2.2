@@ -318,9 +318,21 @@ struct GameInjectorConfig {
 void plugin_log(const char* fmt, ...);
 bool Is_Game_Running(int &BigAppid, const char* title_id);
 
+// Etat du hook, scope a UNE session d'injection (un appel a inject_into_game).
+// Passe par reference au lieu de 'static' dans HookGame : des 'static'
+// locales a la fonction survivaient a vie dans le process du loader, donc si
+// le kernel reutilisait le meme PID pour le jeu relance (frequent sur PS5),
+// le code croyait le hook "deja installe" et ecrivait dans l'adresse du
+// PROCESS PRECEDENT (deja mort/demappe) -> crash au relancement.
+struct HookSession {
+  uintptr_t first_stuffAddr = 0;
+  bool      already_hooked  = false;
+};
+
 // out_stuff_addr (optionnel) : recoit l'adresse du GameStuff alloue dans le
 // process cible, pour lire le flag 'loaded' depuis l'exterieur apres injection.
 bool HookGame(UniquePtr<Hijacker> &hijacker, uint64_t alsr_b, const char* prx_path,
+              HookSession &session,
               bool auto_load, int frame_delay = 300, uintptr_t* out_stuff_addr = nullptr);
 
 GameInjectorConfig parse_injector_config();

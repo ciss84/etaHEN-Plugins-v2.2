@@ -65,21 +65,12 @@ bool Is_Game_Running(int &BigAppid, const char* title_id)
 }
 
 bool HookGame(UniquePtr<Hijacker> &hijacker, uint64_t alsr_b, const char* prx_path,
+              HookSession &session,
               bool auto_load, int frame_delay, uintptr_t* out_stuff_addr)
 {
-  static uintptr_t first_stuffAddr = 0;
-  static bool already_hooked = false;
-  static pid_t last_pid = 0;
-
   plugin_log("[HookGame] PRX: %s | auto_load: %d | frame_delay: %d", prx_path, auto_load, frame_delay);
 
   pid_t current_pid = hijacker->getPid();
-  if (current_pid != last_pid) {
-    plugin_log("[HookGame] === NEW GAME PROCESS: PID %d → %d, reset state ===", last_pid, current_pid);
-    already_hooked = false;
-    first_stuffAddr = 0;
-    last_pid = current_pid;
-  }
 
   GameBuilder builder = auto_load ? BUILDER_TEMPLATE_AUTO : BUILDER_TEMPLATE;
   size_t shellcode_size = auto_load ? GameBuilder::SHELLCODE_SIZE_AUTO : GameBuilder::SHELLCODE_SIZE;
@@ -132,11 +123,11 @@ bool HookGame(UniquePtr<Hijacker> &hijacker, uint64_t alsr_b, const char* prx_pa
 
       plugin_log("[HookGame] PLT entry trouvee: r_offset=0x%llx | hook_adr=0x%llx", plt.r_offset, hook_adr);
 
-      if (already_hooked && first_stuffAddr != 0) {
-        plugin_log("[HookGame] Hook existant pour PID %d — UPDATE GameStuff @ 0x%llx", current_pid, first_stuffAddr);
-        hijacker->write(first_stuffAddr, stuff);
+      if (session.already_hooked && session.first_stuffAddr != 0) {
+        plugin_log("[HookGame] Hook existant pour PID %d — UPDATE GameStuff @ 0x%llx", current_pid, session.first_stuffAddr);
+        hijacker->write(session.first_stuffAddr, stuff);
         plugin_log("[HookGame] GameStuff UPDATE OK: %s", stuff.prx_path);
-        if (out_stuff_addr) *out_stuff_addr = first_stuffAddr;
+        if (out_stuff_addr) *out_stuff_addr = session.first_stuffAddr;
         return true;
       }
       
@@ -181,8 +172,8 @@ bool HookGame(UniquePtr<Hijacker> &hijacker, uint64_t alsr_b, const char* prx_pa
       hijacker->write(stuffAddr, stuff);
       hijacker->write<uintptr_t>(hook_adr, code);
 
-      already_hooked = true;
-      first_stuffAddr = stuffAddr;
+      session.already_hooked = true;
+      session.first_stuffAddr = stuffAddr;
 
       if (out_stuff_addr) *out_stuff_addr = stuffAddr;
 
