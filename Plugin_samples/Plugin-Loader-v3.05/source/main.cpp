@@ -396,14 +396,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
 
-    // Delai de base avant la toute premiere ecriture (apres la 1ere suspension).
-    const useconds_t INITIAL_SUSPEND_SETTLE_US = is_ps4_bc ? 1500000 : 750000;
-    // Temps laisse au jeu pour charger le PRX avant de re-suspendre pour le suivant.
-    const unsigned int PRX_LOAD_WAIT_SECONDS   = is_ps4_bc ? 2 : 3;
-    // Marge de stabilisation avant l'ecriture "update" du PRX suivant.
-    const useconds_t NEXT_WRITE_SETTLE_US      = is_ps4_bc ? 5000000 : 2500000;
-    // Marge avant le resume final.
-    const useconds_t FINAL_RESUME_SETTLE_US    = is_ps4_bc ? 1000000 : 500000;
+    const useconds_t INITIAL_SUSPEND_SETTLE_US = 750000;
+    const unsigned int PRX_LOAD_WAIT_SECONDS   = 3;
+    const useconds_t NEXT_WRITE_SETTLE_US      = 2500000;
+    const useconds_t FINAL_RESUME_SETTLE_US    = 500000;
 
     if (hijacker) {
         uint64_t text_base = hijacker->getEboot()->imagebase();
@@ -481,8 +477,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    //plugin_log("=== PRX LOADER v3.05 + BACKPORK ===");
-    plugin_log("===SSHADOWMOD BACKPORK LOADER v3.05===");    
+    plugin_log("=== PRX LOADER v3.06 + BACKPORK ===");
+    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.06===");    
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -538,8 +534,8 @@ int main()
         return -1;
     }
 
-    //printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.05 By @84Ciss ", fw_major, fw_minor);
-    printf_notification("ShadowMod FW: %x.%02x      \nVer:3.05 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
