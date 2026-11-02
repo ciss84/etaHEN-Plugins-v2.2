@@ -399,7 +399,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     // Delai de base avant la toute premiere ecriture (apres la 1ere suspension).
     const useconds_t INITIAL_SUSPEND_SETTLE_US = is_ps4_bc ? 1500000 : 750000;
     // Temps laisse au jeu pour charger le PRX avant de re-suspendre pour le suivant.
-    const unsigned int PRX_LOAD_WAIT_SECONDS   = is_ps4_bc ? 5 : 3;
+    const unsigned int PRX_LOAD_WAIT_SECONDS   = is_ps4_bc ? 2 : 3;
     // Marge de stabilisation avant l'ecriture "update" du PRX suivant.
     const useconds_t NEXT_WRITE_SETTLE_US      = is_ps4_bc ? 5000000 : 2500000;
     // Marge avant le resume final.
