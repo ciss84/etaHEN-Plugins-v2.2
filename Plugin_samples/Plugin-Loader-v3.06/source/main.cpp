@@ -371,35 +371,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     int success_count = 0;
-
-    // Etat de hook scope a CETTE session d'injection (ce pid, ce process).
-    // Partage entre tous les PRX de la boucle ci-dessous (voulu : le 2e+ PRX
-    // doit faire un "update" sur le meme hook), mais jamais reutilise pour un
-    // autre appel a inject_into_game -> plus de collision si le kernel
-    // reutilise le pid pour un jeu relance.
     HookSession hook_session;
 
-    // Les titres PS4 (BC, title_id CUSA*/SCUS*) tournent sous la couche de
-    // compatibilite PS4->PS5 : sceKernelSuspendProcess() y semble moins fiable
-    // / moins "immediat" que sur un titre PS5 natif (PPSA*). Avec les memes
-    // delais que pour PPSA, une ecriture "update" du 2e+ PRX peut arriver
-    // pendant que le process n'est pas encore vraiment suspendu -> ecriture
-    // concurrente avec le thread du jeu -> crash/corruption observee
-    // uniquement en multi-PRX sur PS4 ("ps5 impec, ps4 double prx bug").
-    // Plutot que de changer de mecanisme (le shellcode auto_load/BUILDER_
-    // TEMPLATE_AUTO s'est revele casse a la desassemblage - jl vers une
-    // adresse en plein milieu d'une instruction), on garde la boucle
-    // suspend/resume/overwrite manuelle existante mais on lui donne une
-    // marge de securite plus large sur PS4 BC.
     bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
-
-    const useconds_t INITIAL_SUSPEND_SETTLE_US = 500000;
-    const unsigned int PRX_LOAD_WAIT_SECONDS   = 3;
-    const useconds_t NEXT_WRITE_SETTLE_US      = 2500000;
-    const useconds_t FINAL_RESUME_SETTLE_US    = 500000;
 
     if (hijacker) {
         uint64_t text_base = hijacker->getEboot()->imagebase();
