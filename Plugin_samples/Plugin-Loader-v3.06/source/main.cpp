@@ -382,36 +382,16 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
-        // Detection LSO (GTA Online) : LSOPlugin.prx (PS4) ou LSO-1.010.prx (PS5)
-        bool is_lso = false;
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        usleep(750000);
+        
         for (const auto &prx : prx_list) {
-            if (strstr(prx.path.c_str(), "LSO") != nullptr) {
-                is_lso = true;
-                break;
-            }
-        }
-
-        if (is_lso) {
-            // LSO: suspension rapide apres 500ms (gagne la course anti-cheat)
-            plugin_log("[LSO] GTA Online detected - fast suspend in 500ms");
-            usleep(500000);
-            sceKernelPrepareToSuspendProcess(pid);
-            sceKernelSuspendProcess(pid);
-        } else {
-            // Comportement original
-            sceKernelPrepareToSuspendProcess(pid);
-            sceKernelSuspendProcess(pid);
-            usleep(750000);
-        }
-
-        for (const auto &prx : prx_list) {
-            // LSO: forcer frame_delay 300
-            int effective_delay = (is_lso) ? 300 : prx.frame_delay;
-            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
+            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
 
             uintptr_t stuff_addr = 0;
 
-            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, effective_delay, &stuff_addr)) {
+            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, prx.frame_delay, &stuff_addr)) {
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
                            
