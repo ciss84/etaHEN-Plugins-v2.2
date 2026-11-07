@@ -396,7 +396,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
 
-    const useconds_t INITIAL_SUSPEND_SETTLE_US = 750000;
+    const useconds_t INITIAL_SUSPEND_SETTLE_US = 500000;
     const unsigned int PRX_LOAD_WAIT_SECONDS   = 3;
     const useconds_t NEXT_WRITE_SETTLE_US      = 2500000;
     const useconds_t FINAL_RESUME_SETTLE_US    = 500000;
@@ -407,7 +407,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(INITIAL_SUSPEND_SETTLE_US);
+        usleep(500000);
 
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -422,12 +422,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 sceKernelResumeProcess(pid);
 
                 // Attends que le PRX se charge (plus long sur PS4 BC)
-                sleep(PRX_LOAD_WAIT_SECONDS);
+                sleep(3);
 
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
                     sceKernelSuspendProcess(pid);
-                    usleep(NEXT_WRITE_SETTLE_US);
+                    usleep(2500000);
                 }
             } else {
                 plugin_log("[PLT] FAILED to hook: %s", prx.path.c_str());
@@ -435,7 +435,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         // Final resume
-        usleep(FINAL_RESUME_SETTLE_US);
+        usleep(500000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
 
