@@ -194,6 +194,8 @@ static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
 //  Wait for a process to exit (kqueue / EVFILT_PROC)
 // ─────────────────────────────────────────────────────────────────────────────
 
+static bool IsProcessRunning(pid_t pid);
+
 static void wait_for_pid_exit(pid_t pid)
 {
     int kq = kqueue();
@@ -205,19 +207,31 @@ static void wait_for_pid_exit(pid_t pid)
     if (kevent(kq, &kev, 1, nullptr, 0, nullptr) == -1) {
         plugin_log("[Wait] kevent registration failed for pid %d: %s", pid, strerror(errno));
         close(kq);
-        sleep(3);
+        // Fallback polling si kqueue echoue
+        for (int i = 0; i < 120 && IsProcessRunning(pid); i++)
+            sleep(1);
         return;
     }
 
     plugin_log("[Wait] Watching pid %d for exit...", pid);
     while (1) {
         struct kevent ev;
-        int nev = kevent(kq, nullptr, 0, &ev, 1, nullptr);
+        // Timeout 2 secondes par iteration - evite le blocage infini
+        struct timespec timeout = {2, 0};
+        int nev = kevent(kq, nullptr, 0, &ev, 1, &timeout);
         if (nev > 0 && (ev.fflags & NOTE_EXIT)) {
-            plugin_log("[Wait] pid %d exited", pid);
+            plugin_log("[Wait] pid %d exited (kqueue)", pid);
             break;
         }
-        if (nev < 0) break;
+        if (nev < 0) {
+            plugin_log("[Wait] kevent error: %s", strerror(errno));
+            break;
+        }
+        // nev == 0 = timeout -> verifier si process encore vivant
+        if (!IsProcessRunning(pid)) {
+            plugin_log("[Wait] pid %d no longer running (poll check)", pid);
+            break;
+        }
     }
     close(kq);
 }
@@ -325,8 +339,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
-    // ── 0. DETECTION LSO (GTA Online PS4 + PS5) ──────────────────────────
-    // PS4: LSOPlugin.prx  |  PS5: LSO-1.010.prx
+    // ── 0. DETECTION LSO ─────────────────────────────────────────────────
+    // PS4 BC (CUSA) : LSOPlugin.prx  -> suspension immediate
+    // PS5 natif (PPSA) : LSO-1.010.prx -> PAS de suspension immediate, timing normal
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
+
     bool is_lso = false;
     for (const auto &prx : prx_list) {
         if (strstr(prx.path.c_str(), "LSO") != nullptr) {
@@ -334,12 +351,22 @@ static void inject_into_game(pid_t pid, const char *title_id,
             break;
         }
     }
-    if (is_lso) {
-        plugin_log("[LSO] GTA Online detected - suspending in 500ms (pid %d)", pid);
+
+    // Suspension immediate uniquement pour GTA PS4 BC (CUSA)
+    // Pour PPSA: le timing normal fonctionne, pas besoin de suspendre ici
+    bool lso_early_suspend = is_lso && is_ps4_bc;
+
+    if (lso_early_suspend) {
+        plugin_log("========================================");
+        plugin_log("[LSO] GTA ONLINE PS4 BC DETECTED");
+        plugin_log("[LSO] Waiting 500ms then suspending pid %d", pid);
+        plugin_log("========================================");
         usleep(500000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        plugin_log("[LSO] Game frozen");
+        plugin_log("[LSO] Game frozen - safe to inject");
+    } else if (is_lso && !is_ps4_bc) {
+        plugin_log("[LSO] GTA ONLINE PS5 DETECTED - using normal timing");
     }
 
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
@@ -371,13 +398,19 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-    plugin_log("[PLT] Waiting for process initialization...");
-    int alive = 0;
-    for (int i = 0; i < 10; i++) {
-        usleep(100000);
-        if (IsProcessRunning(pid)) alive++;
+    // Pour LSO PS4 BC: pas d'attente - jeu deja suspendu immediatement
+    // Pour PPSA (PS5): toujours attendre l'init normale
+    if (!lso_early_suspend) {
+        plugin_log("[PLT] Waiting for process initialization...");
+        int alive = 0;
+        for (int i = 0; i < 10; i++) {
+            usleep(100000);
+            if (IsProcessRunning(pid)) alive++;
+        }
+        plugin_log("[PLT] Process alive: %d/10 checks", alive);
+    } else {
+        plugin_log("[PLT] LSO PS4 mode: skipping init wait (already suspended)");
     }
-    plugin_log("[PLT] Process alive: %d/10 checks", alive);
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
     UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
@@ -390,7 +423,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     int success_count = 0;
     HookSession hook_session;
 
-    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
@@ -399,16 +431,24 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
-        if (!is_lso) {
+        // Pour LSO PS4 BC: deja suspendu en etape 0, pas de re-suspension
+        // Pour PPSA et tout le reste: suspension normale
+        if (!lso_early_suspend) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
             usleep(750000);
         } else {
-            plugin_log("[LSO] Already suspended - skipping re-suspend");
+            plugin_log("[PLT] LSO PS4 mode: game already suspended (500ms deja attendu)");
         }
 
         for (const auto &prx : prx_list) {
-            int effective_delay = is_lso ? 300 : prx.frame_delay;
+            // Pour LSO PS4 BC seulement: forcer frame_delay = 300
+            // PPSA utilise le frame_delay de la config (ex: 120)
+            int effective_delay = prx.frame_delay;
+            if (lso_early_suspend) {
+                effective_delay = 300;
+                plugin_log("[LSO PS4] Forcing frame_delay = 300 frames (~5s)");
+            }
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
 
             uintptr_t stuff_addr = 0;
