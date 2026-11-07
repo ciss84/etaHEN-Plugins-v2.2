@@ -325,6 +325,23 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
+    // ── 0. DETECTION LSO (GTA Online PS4 + PS5) ──────────────────────────
+    // PS4: LSOPlugin.prx  |  PS5: LSO-1.010.prx
+    bool is_lso = false;
+    for (const auto &prx : prx_list) {
+        if (strstr(prx.path.c_str(), "LSO") != nullptr) {
+            is_lso = true;
+            break;
+        }
+    }
+    if (is_lso) {
+        plugin_log("[LSO] GTA Online detected - suspending in 500ms (pid %d)", pid);
+        usleep(500000);
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        plugin_log("[LSO] Game frozen");
+    }
+
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
@@ -382,16 +399,21 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        usleep(750000);
-        
+        if (!is_lso) {
+            sceKernelPrepareToSuspendProcess(pid);
+            sceKernelSuspendProcess(pid);
+            usleep(750000);
+        } else {
+            plugin_log("[LSO] Already suspended - skipping re-suspend");
+        }
+
         for (const auto &prx : prx_list) {
-            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
+            int effective_delay = is_lso ? 300 : prx.frame_delay;
+            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
 
             uintptr_t stuff_addr = 0;
 
-            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, prx.frame_delay, &stuff_addr)) {
+            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, effective_delay, &stuff_addr)) {
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
                            
