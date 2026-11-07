@@ -194,6 +194,8 @@ static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
 //  Wait for a process to exit (kqueue / EVFILT_PROC)
 // ─────────────────────────────────────────────────────────────────────────────
 
+static bool IsProcessRunning(pid_t pid);
+
 static void wait_for_pid_exit(pid_t pid)
 {
     int kq = kqueue();
