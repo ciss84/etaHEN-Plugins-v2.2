@@ -404,7 +404,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[PLT] Waiting for process initialization...");
         int alive = 0;
         for (int i = 0; i < 10; i++) {
-            usleep(180000);
+            usleep(120000);
             if (IsProcessRunning(pid)) alive++;
         }
         plugin_log("[PLT] Process alive: %d/10 checks", alive);
