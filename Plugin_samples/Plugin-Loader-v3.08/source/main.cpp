@@ -436,7 +436,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         if (!lso_early_suspend) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
-            usleep(500000);
+            usleep(750000);
         } else {
             plugin_log("[PLT] LSO PS4 mode: game already suspended (500ms deja attendu)");
         }
