@@ -339,14 +339,13 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
-    // ── 0. DETECTION LSO - PS4 BC uniquement (CUSA, pas PPSA) ────────────
-    // Cherche si un PRX LSO est dans la liste OU sur le disque
+    // ── 0. DETECTION LSO ─────────────────────────────────────────────────
+    // PS4 BC (CUSA) : LSOPlugin.prx
+    // PS5 natif (PPSA) : LSO-1.010.prx
     bool is_lso = false;
 
-    // Check dans la liste PRX configuree (vient du .ini)
     for (const auto &prx : prx_list) {
-        if (strstr(prx.path.c_str(), "LSOPlugin") != nullptr ||
-            strstr(prx.path.c_str(), "LSO") != nullptr) {
+        if (strstr(prx.path.c_str(), "LSO") != nullptr) {
             is_lso = true;
             break;
         }
@@ -431,11 +430,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
         if (!is_lso) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
+            // 750ms apres suspension pour PS4 BC et PS5 natif
+            usleep(750000);
         } else {
-            plugin_log("[PLT] LSO mode: game already suspended, skipping re-suspend");
+            plugin_log("[PLT] LSO mode: game already suspended (500ms deja attendu)");
         }
-        // 750ms apres suspension - PS4 BC et PS5 natif en ont besoin
-        usleep(750000);
 
         for (const auto &prx : prx_list) {
             // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
