@@ -384,8 +384,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(1000000);
-
+        usleep(500000);
+        
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
 
@@ -395,11 +395,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
 
+                // Attends que le PRX se charge (plus long sur PS4 BC)
+                sleep(3);                
                 sceKernelPrepareToResumeProcess(pid);
                 sceKernelResumeProcess(pid);
-
-                // Attends que le PRX se charge (plus long sur PS4 BC)
-                sleep(3);
 
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
