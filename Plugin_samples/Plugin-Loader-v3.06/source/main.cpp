@@ -442,12 +442,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         for (const auto &prx : prx_list) {
-            // Pour LSO PS4 BC seulement: forcer frame_delay = 300
-            // PPSA utilise le frame_delay de la config (ex: 120)
+            // Pour LSO PS4 BC seulement: forcer frame_delay = 500
+            // PPSA utilise le frame_delay de la config
             int effective_delay = prx.frame_delay;
             if (lso_early_suspend) {
-                effective_delay = 300;
-                plugin_log("[LSO PS4] Forcing frame_delay = 300 frames (~5s)");
+                effective_delay = 500;
+                plugin_log("[LSO PS4] Forcing frame_delay = 500 frames (~8s)");
             }
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
 
