@@ -431,10 +431,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
         if (!is_lso) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
-            usleep(750000);
         } else {
             plugin_log("[PLT] LSO mode: game already suspended, skipping re-suspend");
         }
+        // 750ms apres suspension - PS4 BC et PS5 natif en ont besoin
+        usleep(750000);
 
         for (const auto &prx : prx_list) {
             // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
