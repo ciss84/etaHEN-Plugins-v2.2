@@ -24,7 +24,7 @@
 // : le kernel reutilise parfois le pid presque immediatement et/ou le
 // process relance pas encore totalement stabilise (PLT table, sandbox) cote
 // kernel au moment ou le loader essaie deja de s'attacher dessus.
-#define RELAUNCH_COOLDOWN_SECONDS 1
+#define RELAUNCH_COOLDOWN_SECONDS 6
 
 typedef struct app_info {
     uint32_t app_id;
