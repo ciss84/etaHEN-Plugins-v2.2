@@ -2,6 +2,7 @@
 #include <notify.hpp>
 #include <signal.h>
 #include <string>
+#include <fcntl.h>
 #include <ps5/kernel.h>
 
 #include <dirent.h>
@@ -325,6 +326,42 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
+    // ── 0. DETECTION LSO (GTA V Online PS4) ──────────────────────────────
+    // Check si LSO153bea.prx ou lsoplugin.prx est dans la liste
+    bool is_lso = false;
+    for (const auto &prx : prx_list) {
+        if (strstr(prx.path.c_str(), "LSOPlugin.prx") != nullptr ||
+            strstr(prx.path.c_str(), "LSO") != nullptr) {
+            is_lso = true;
+            break;
+        }
+    }
+
+    // Si pas de LSO dans config, verifier si LSO153bea.prx existe sur le disque
+    // (comme dans la v2.11 - detection automatique)
+    bool lso_file_present = false;
+    {
+        int fd = open("/data/PluginLoader/prx/LSOPlugin.prx", O_RDONLY);
+        if (fd >= 0) { close(fd); lso_file_present = true; }
+    }
+
+    // Pour GTAV PS4 (CUSA00411 / CUSA00419), forcer LSO si fichier present
+    bool is_gtav_ps4 = (strcmp(title_id, "CUSA00411") == 0 ||
+                        strcmp(title_id, "CUSA00419") == 0);
+    if (is_gtav_ps4 && lso_file_present)
+        is_lso = true;
+
+    if (is_lso) {
+        plugin_log("========================================");
+        plugin_log("[LSO] GTA V ONLINE DETECTED - EMERGENCY SUSPEND");
+        plugin_log("[LSO] Suspending IMMEDIATELY (pid %d)", pid);
+        plugin_log("========================================");
+        // Suspension immediate avant que l'anti-cheat puisse demarrer
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        plugin_log("[LSO] Game frozen - safe to inject");
+    }
+
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
@@ -354,13 +391,18 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-    plugin_log("[PLT] Waiting for process initialization...");
-    int alive = 0;
-    for (int i = 0; i < 10; i++) {
-        usleep(100000);
-        if (IsProcessRunning(pid)) alive++;
+    // Pour LSO: pas d'attente, deja suspendu immediatement
+    if (!is_lso) {
+        plugin_log("[PLT] Waiting for process initialization...");
+        int alive = 0;
+        for (int i = 0; i < 10; i++) {
+            usleep(100000);
+            if (IsProcessRunning(pid)) alive++;
+        }
+        plugin_log("[PLT] Process alive: %d/10 checks", alive);
+    } else {
+        plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
     }
-    plugin_log("[PLT] Process alive: %d/10 checks", alive);
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
     UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
@@ -382,16 +424,27 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        //usleep(750000);
-        
+        // Pour LSO: deja suspendu, pas de re-suspension
+        if (!is_lso) {
+            sceKernelPrepareToSuspendProcess(pid);
+            sceKernelSuspendProcess(pid);
+            usleep(750000);
+        } else {
+            plugin_log("[PLT] LSO mode: game already suspended, skipping re-suspend");
+        }
+
         for (const auto &prx : prx_list) {
-            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
+            // Pour LSO: forcer frame_delay = 300 (comme v2.11)
+            int effective_delay = prx.frame_delay;
+            if (is_lso) {
+                effective_delay = 300;
+                plugin_log("[LSO] Forcing frame_delay = 300 frames (~5s) for LSO PRX");
+            }
+            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
 
             uintptr_t stuff_addr = 0;
 
-            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, prx.frame_delay, &stuff_addr)) {
+            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, effective_delay, &stuff_addr)) {
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
                            
