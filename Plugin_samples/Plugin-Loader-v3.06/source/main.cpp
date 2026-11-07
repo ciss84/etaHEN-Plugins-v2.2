@@ -394,12 +394,14 @@ static void inject_into_game(pid_t pid, const char *title_id,
             if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, prx.frame_delay, &stuff_addr)) {
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
-
-                // Attends que le PRX se charge (plus long sur PS4 BC)
-                sleep(3);                
+                
+                usleep(500000);            
                 sceKernelPrepareToResumeProcess(pid);
                 sceKernelResumeProcess(pid);
-
+                
+                // Attends que le PRX se charge (plus long sur PS4 BC)
+                sleep(3);   
+                
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
                     sceKernelSuspendProcess(pid);
