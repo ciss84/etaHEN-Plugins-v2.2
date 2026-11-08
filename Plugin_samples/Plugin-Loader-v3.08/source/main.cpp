@@ -268,11 +268,26 @@ static int cleanup_directory(const char *path)
 
 static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_mount)
 {
+    // Attendre que le kernel libere vraiment le process
+    // (NOTE_EXIT arrive parfois avant la liberation complete des ressources)
+    for (int i = 0; i < 10 && IsProcessRunning(pid); i++) {
+        plugin_log("[Cleanup] Waiting for pid %d to fully die... (%d/10)", pid, i + 1);
+        usleep(500000);
+    }
+
     if (fakelib_mount) {
+        plugin_log("[Cleanup] Unmounting %s", fakelib_mount);
+        unmount(fakelib_mount, 0);
+        usleep(200000);
+        free(fakelib_mount);
+    }
+
+    if (sandbox_id && sandbox_id[0] != '\0') {
         char sandbox_app0[PATH_MAX];
         snprintf(sandbox_app0, sizeof(sandbox_app0),
                  "/mnt/sandbox/%s/app0", sandbox_id);
 
+        // Attendre que le systeme demontre le sandbox app0
         int wait_count = 0;
         struct stat st;
         while (stat(sandbox_app0, &st) == 0 && wait_count < 30) {
@@ -280,19 +295,14 @@ static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_
             wait_count++;
         }
 
-        plugin_log("[Cleanup] Unmounting %s", fakelib_mount);
-        unmount(fakelib_mount, 0);
-
         char sandbox_dir[PATH_MAX];
         snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sandbox_id);
         plugin_log("[Cleanup] Removing %s", sandbox_dir);
         if (cleanup_directory(sandbox_dir) == 0) {
             plugin_log("[Cleanup] Sandbox removed");
-            printf_notification("Sandbox %s cleaned up     ", sandbox_id);
         } else {
             plugin_log("[Cleanup] Failed to remove sandbox: %s", strerror(errno));
         }
-        free(fakelib_mount);
     }
 }
 
@@ -500,8 +510,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("[Wait] Waiting for game (pid %d) to exit...", pid);
     wait_for_pid_exit(pid);
 
-    if (fakelib_mount)
-        cleanup_after_game(pid, sandbox_id, fakelib_mount);
+    cleanup_after_game(pid, sandbox_id, fakelib_mount);
 
     // ── 5. Cooldown anti quit+relaunch-trop-vite ──────────────────────────
     plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
@@ -639,12 +648,10 @@ int main()
 
                 pid_t game_pid = child_pid;
                 child_pid = -1;
-                if (fml) {
-                    wait_for_pid_exit(game_pid);
-                    cleanup_after_game(game_pid, sid, fml);
-                    plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
-                    sleep(RELAUNCH_COOLDOWN_SECONDS);
-                }
+                wait_for_pid_exit(game_pid);
+                cleanup_after_game(game_pid, sid, fml);
+                plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
+                sleep(RELAUNCH_COOLDOWN_SECONDS);
                 continue;
             }
 
