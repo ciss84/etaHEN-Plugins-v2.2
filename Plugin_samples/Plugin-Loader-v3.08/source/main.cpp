@@ -282,7 +282,12 @@ static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_
         free(fakelib_mount);
     }
 
-    if (sandbox_id && sandbox_id[0] != '\0') {
+    // Ne toucher au sandbox que si c'est un jeu PPSA (PS5 natif).
+    // Pour les jeux PS4 BC (CUSA/SCUS), le sandbox est gere par le systeme
+    // et tenter de le supprimer manuellement crash la console au reload.
+    bool is_ppsa = sandbox_id && strncmp(sandbox_id, "PPSA", 4) == 0;
+
+    if (is_ppsa) {
         char sandbox_app0[PATH_MAX];
         snprintf(sandbox_app0, sizeof(sandbox_app0),
                  "/mnt/sandbox/%s/app0", sandbox_id);
@@ -303,6 +308,8 @@ static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_
         } else {
             plugin_log("[Cleanup] Failed to remove sandbox: %s", strerror(errno));
         }
+    } else if (sandbox_id && sandbox_id[0] != '\0') {
+        plugin_log("[Cleanup] PS4 BC sandbox - skipping manual removal");
     }
 }
 
@@ -582,8 +589,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.08 By @84Ciss ", fw_major, fw_minor);
-    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.08 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.08 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.08 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
