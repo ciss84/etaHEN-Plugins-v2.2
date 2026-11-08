@@ -1,0 +1,71 @@
+libhijacker - mise a jour firmware (11.00 -> 13.60) + garde-fous
+
+1) source/offsets.cpp
+   - Ajout des constantes V1100..V1360 et des cas 11.00, 11.20, 11.60, 12.00, 12.02, 12.20, 12.40,
+     12.60, 12.70, 13.00, 13.20, 13.40, 13.42, 13.60 dans allproc, security_flags, qa_flags,
+     utoken_flags et root_vnode.
+   - Valeurs : source publique (portage etaHEN non officiel, firmware-profiles.json).
+     NON VERIFIEES sur console par l'auteur de cette modification.
+     La source ne marque "community-confirmed" que 11.20, 12.40, 13.40, 13.60.
+   - qa_flags = security + 0x24, utoken_flags = security + 0x8C (meme convention que 6.00 -> 10.60).
+   - 11.40 : pas de table publique -> reste "Unsupported" (-1). Idem 14.xx et plus.
+
+2) Garde-fous (firmware non liste => on s'arrete au lieu de lire kernel_base - 1) :
+   - dbg.cpp      : getCurrentProc() renvoie 0 si allproc() == -1
+   - hijacker.cpp / hijacker2.cpp : jailbreak() abandonne si root_vnode() == -1 ;
+                                    getHijacker(name) ignore un proc null
+
+----
+MAJ complementaire (11.40) :
+- Table KERNEL_ADDRESS_ALLPROC / SECURITY_FLAGS / ROOTVNODE fournie par
+  l'utilisateur confirme que le firmware 11.40 (0x11400000) partage les
+  MEMES offsets noyau que 11.00/11.20/11.60 :
+    allproc        = DATA_BASE + 0x2875D70
+    security_flags = DATA_BASE + 0xD8C064
+    root_vnode     = DATA_BASE + 0x30B7510
+- offsets.cpp : V1140 ajoute dans les 5 switch (allproc, security_flags,
+  qa_flags, utoken_flags, root_vnode), groupe avec V1100/V1120/V1160.
+  Teste sur l'hote (switch isole, build g++), toutes les versions
+  11.00/11.20/11.40/11.60/12.xx/13.xx renvoient les bonnes valeurs, et un
+  firmware inconnu tombe toujours proprement dans le default (-1).
+- libSelfDecryptor/selfpager.c (pagertab) : PAS touche pour 11.40. La table
+  pagertab separe deja 11.00/11.20 (0xDF1940) de 11.60 (0xDF1960), donc le
+  regroupement "11.00/11.20/11.40/11.60 identiques" valable pour offsets.cpp
+  ne s'applique pas forcement au pagertab. Reste en ENOSYS tant qu'aucune
+  valeur verifiee n'est trouvee.
+
+----
+MAJ complementaire (14.00 / 14.10) :
+- Memes champs (allproc/security_flags/root_vnode/qa_flags/utoken_flags)
+  ajoutes a partir de la table KERNEL_ADDRESS_* fournie par l'utilisateur :
+    allproc        = DATA_BASE + 0x28D9EA0
+    security_flags = DATA_BASE + 0xDA4064
+    root_vnode     = DATA_BASE + 0x315B510
+- V1400 (0x14000000) et V1410 (0x14100000) ajoutes dans les 5 switch.
+- NON VERIFIE sur console (donnee externe non testee par l'auteur de
+  l'ajout). Pagertab (libSelfDecryptor) : toujours pas de valeur pour
+  14.xx -> reste ENOSYS.
+
+----
+Ajout de 4 nouvelles fonctions dans offsets.cpp (pas d'equivalent avant) :
+- text_base_delta()   : KERNEL_ADDRESS_TEXT_BASE - DATA_BASE (SIGNE, negatif)
+- bus_data_devices()  : KERNEL_ADDRESS_BUS_DATA_DEVICES - DATA_BASE
+- vmspace_p_root()    : KERNEL_OFFSET_VMSPACE_P_ROOT (offset de struct, pas lie a DATA_BASE)
+- vmspace_vm_pmap()   : KERNEL_OFFSET_VMSPACE_VM_PMAP (idem)
+Couverture : 1.00 -> 14.10 (table fournie par l'utilisateur).
+IMPORTANT : aucun appelant existant dans le code actuel (hijacker.cpp, dbg.cpp,
+elf.cpp, etc.) n'utilise ces 4 fonctions. Elles sont ajoutees pretes a
+l'emploi mais dormantes -- NON VERIFIEES sur console, et pas branchees a une
+fonctionnalite pour l'instant.
+Teste sur l'hote (g++, switch isole) : valeurs correctes pour 1.00, 1.05,
+2.00, 6.00, 11.00, 11.40, 13.60, 14.00, 14.10 ; un firmware inconnu
+retombe proprement sur le garde-fou (-1 / 0 + message), sans casser les
+5 fonctions existantes (allproc, security_flags, qa_flags, utoken_flags,
+root_vnode) qui restent inchangees.
+
+----
+Correction compilation (SDK PS5 reel, via CI utilisateur) :
+- text_base_delta() utilisait `ptrdiff_t`, absent du SDK PS5 (clang + libc
+  custom, contrairement a glibc sur mon test hote qui l'exposait sans
+  probleme). Remplace par `int64_t` (deja dispo via stdint.h inclus) ->
+  erreur "unknown type name 'ptrdiff_t'" corrigee.
