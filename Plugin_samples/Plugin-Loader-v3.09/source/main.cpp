@@ -393,18 +393,28 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-    // Pour LSO: pas d'attente - jeu deja suspendu immediatement
-    if (!is_lso) {
-        plugin_log("[PLT] Waiting for process initialization...");
-        int alive = 0;
-        for (int i = 0; i < 10; i++) {
-            usleep(1000000);
-            if (IsProcessRunning(pid)) alive++;
-        }
-        plugin_log("[PLT] Process alive: %d/10 checks", alive);
-    } else {
-        plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
+if (!is_lso) {
+    plugin_log("[PLT] Waiting for process to stabilize...");
+    // Attente active : on poll jusqu'à ce que le process soit vivant
+    // ET on laisse encore une marge fixe après pour que la PLT soit prete
+    int alive_checks = 0;
+    for (int i = 0; i < 40 && alive_checks < 3; i++) {
+        usleep(500000); // 0.5s par iteration
+        if (IsProcessRunning(pid))
+            alive_checks++;
+        else
+            alive_checks = 0; // reset si le process disparait entre deux checks
     }
+    plugin_log("[PLT] Process stable after ~%gs (%d/3 alive checks)",
+               alive_checks * 0.5, alive_checks);
+    // Marge supplementaire post-stabilisation pour PS4 BC
+    if (is_ps4_bc)
+        usleep(2000000); // +2s PS4 BC
+    else
+        usleep(1000000); // +1s PS5 natif
+} else {
+    plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
+}
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
     UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
