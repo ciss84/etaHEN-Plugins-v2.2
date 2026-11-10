@@ -378,7 +378,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[LSO] GTA ONLINE PS4 BC DETECTED");
         plugin_log("[LSO] Waiting 500ms then suspending pid %d", pid);
         plugin_log("========================================");
-        usleep(500000);
+        usleep(750000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
         plugin_log("[LSO] Game frozen - safe to inject");
@@ -493,7 +493,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         // Final resume
-        usleep(500000);
+        usleep(750000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
 
