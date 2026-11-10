@@ -358,7 +358,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("========================================");
         // 500ms : laisser le process terminer son init minimal
         // (meme timing que la v2.11 qui fonctionnait)
-        usleep(500000);
+        usleep(1000000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
         plugin_log("[LSO] Game frozen - safe to inject");
