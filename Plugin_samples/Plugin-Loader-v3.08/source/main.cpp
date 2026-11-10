@@ -383,7 +383,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
         sceKernelSuspendProcess(pid);
         plugin_log("[LSO] Game frozen - safe to inject");
     } else if (is_lso && !is_ps4_bc) {
-        usleep(750000);
         plugin_log("[LSO] GTA ONLINE PS5 DETECTED - using normal timing");
     }
 
@@ -454,9 +453,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
         if (!lso_early_suspend) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
-            usleep(500000);
+            usleep(750000);
         } else {
             plugin_log("[PLT] LSO PS4 mode: game already suspended (500ms deja attendu)");
+            usleep(750000);
         }
 
         for (const auto &prx : prx_list) {
