@@ -364,7 +364,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[LSO] Game frozen - safe to inject");
     }
 
-    // ── 1. FAKELIB ────────────────────────────────────────────────────────
+    // ── 1. FAKELIB (variables seulement, mount apres stabilisation) ──────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
 
@@ -372,25 +372,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     bool fakelib_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
                           (fakelib_cfg != config.fakelib_enabled.end() ? fakelib_cfg->second
                                                                        : config.default_fakelib);
-
-    if (fakelib_wanted && resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id))) {
-        char fakelib_check[PATH_MAX];
-        snprintf(fakelib_check, sizeof(fakelib_check),
-                 "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
-
-        struct stat st;
-        for (int t = 0; t < 30 && stat(fakelib_check, &st) != 0; t++)
-            usleep(50000);
-
-        if (stat(fakelib_check, &st) == 0) {
-            plugin_log("[Fakelib] app0/fakelib found, mounting NOW");
-            fakelib_mount = try_mount_fakelib(title_id, sandbox_id);
-            if (!fakelib_mount)
-                plugin_log("[Fakelib] mount failed");
-        } else {
-            plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
-        }
-    }
 
     // ── 2. Attente initialisation process ────────────────────────────────
     bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
@@ -416,6 +397,26 @@ static void inject_into_game(pid_t pid, const char *title_id,
             usleep(1000000); // +1s PS5 natif
     } else {
         plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
+    }
+
+    // ── 1b. FAKELIB mount (apres stabilisation) ───────────────────────────
+    if (fakelib_wanted && resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id))) {
+        char fakelib_check[PATH_MAX];
+        snprintf(fakelib_check, sizeof(fakelib_check),
+                 "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
+
+        struct stat st;
+        for (int t = 0; t < 30 && stat(fakelib_check, &st) != 0; t++)
+            usleep(50000);
+
+        if (stat(fakelib_check, &st) == 0) {
+            plugin_log("[Fakelib] app0/fakelib found, mounting NOW");
+            fakelib_mount = try_mount_fakelib(title_id, sandbox_id);
+            if (!fakelib_mount)
+                plugin_log("[Fakelib] mount failed");
+        } else {
+            plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
+        }
     }
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
@@ -520,8 +521,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PRX LOADER v3.09 + BACKPORK ===");
-    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.09===");    
+    plugin_log("=== PRX LOADER v3.06 + BACKPORK ===");
+    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.06===");    
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -577,8 +578,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
-    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
