@@ -421,7 +421,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[PLT] Waiting for process initialization...");
         int alive = 0;
         for (int i = 0; i < 10; i++) {
-            usleep(500000);
+            usleep(750000);
             if (IsProcessRunning(pid)) alive++;
         }
         plugin_log("[PLT] Process alive: %d/10 checks", alive);
@@ -467,7 +467,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 effective_delay = 1000;
                 plugin_log("[LSO PS4] Forcing frame_delay = 500 frames (~8s)");
             }
-            usleep(750000);
+
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
 
             uintptr_t stuff_addr = 0;
