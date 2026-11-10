@@ -384,7 +384,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);
+        usleep(1000000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -412,7 +412,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         // Final resume
-        usleep(500000);
+        usleep(1000000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
 
@@ -478,7 +478,7 @@ int main()
             if (!patch_shellcore_for_data()) {
                 plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
             }
-            usleep(750000);
+            usleep(1000000);
         }
     }
 
