@@ -384,7 +384,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(1000000);
+        usleep(750000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -412,7 +412,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         // Final resume
-        usleep(1000000);
+        usleep(500000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
 
@@ -454,8 +454,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PRX LOADER v3.09 + BACKPORK ===");
-    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.09===");    
+    plugin_log("=== PRX LOADER v3.06 + BACKPORK ===");
+    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.06===");    
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -478,7 +478,7 @@ int main()
             if (!patch_shellcore_for_data()) {
                 plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
             }
-            usleep(1000000);
+            usleep(750000);
         }
     }
 
@@ -511,8 +511,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
-    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
