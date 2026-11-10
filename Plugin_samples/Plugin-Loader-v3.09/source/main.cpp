@@ -354,11 +354,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
     if (is_lso) {
         plugin_log("========================================");
         plugin_log("[LSO] GTA ONLINE PS4 DETECTED");
-        plugin_log("[LSO] Waiting 500ms then suspending pid %d", pid);
+        plugin_log("[LSO] Waiting 2s then suspending pid %d", pid);
         plugin_log("========================================");
-        // 500ms : laisser le process terminer son init minimal
-        // (meme timing que la v2.11 qui fonctionnait)
-        usleep(1000000);
+        // 2s : LSO est CUSA (PS4 BC) donc demarre plus tard que PS5 natif
+        // laisser le process terminer son init avant suspension
+        usleep(2000000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
         plugin_log("[LSO] Game frozen - safe to inject");
@@ -520,7 +520,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PRX LOADER v3.09 + BACKPORK ===");   
+    plugin_log("=== PRX LOADER v3.09 + BACKPORK ===");
+    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.09===");    
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
