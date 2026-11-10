@@ -421,7 +421,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[PLT] Waiting for process initialization...");
         int alive = 0;
         for (int i = 0; i < 10; i++) {
-            usleep(750000);
+            usleep(1000000);
             if (IsProcessRunning(pid)) alive++;
         }
         plugin_log("[PLT] Process alive: %d/10 checks", alive);
@@ -453,7 +453,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         if (!lso_early_suspend) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
-            usleep(750000);
+            usleep(1000000);
         } else {
             plugin_log("[PLT] LSO PS4 mode: game already suspended (500ms deja attendu)");
         }
@@ -493,7 +493,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         // Final resume
-        usleep(750000);
+        usleep(1000000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
 
