@@ -456,17 +456,18 @@ static void inject_into_game(pid_t pid, const char *title_id,
             usleep(750000);
         } else {
             plugin_log("[PLT] LSO PS4 mode: game already suspended (500ms deja attendu)");
-            usleep(750000);
         }
 
         for (const auto &prx : prx_list) {
             // Pour LSO PS4 BC seulement: forcer frame_delay = 500
             // PPSA utilise le frame_delay de la config
+
             int effective_delay = prx.frame_delay;
             if (lso_early_suspend) {
                 effective_delay = 1000;
                 plugin_log("[LSO PS4] Forcing frame_delay = 500 frames (~8s)");
             }
+            usleep(750000);
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
 
             uintptr_t stuff_addr = 0;
