@@ -364,7 +364,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[LSO] Game frozen - safe to inject");
     }
 
-    // ── 1. FAKELIB (variables seulement, mount apres stabilisation) ──────
+    // ── 1. FAKELIB ────────────────────────────────────────────────────────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
 
@@ -373,33 +373,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
                           (fakelib_cfg != config.fakelib_enabled.end() ? fakelib_cfg->second
                                                                        : config.default_fakelib);
 
-    // ── 2. Attente initialisation process ────────────────────────────────
-    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
-
-    // Pour LSO: pas d'attente - jeu deja suspendu immediatement
-    if (!is_lso) {
-        plugin_log("[PLT] Waiting for process to stabilize (%s)...",
-                   is_ps4_bc ? "PS4 BC" : "PS5 natif");
-        // Poll toutes les 500ms jusqu'a 3 checks vivants consecutifs (max 20s)
-        int alive_checks = 0;
-        for (int i = 0; i < 40 && alive_checks < 3; i++) {
-            usleep(500000);
-            if (IsProcessRunning(pid))
-                alive_checks++;
-            else
-                alive_checks = 0;
-        }
-        plugin_log("[PLT] Process stable (%d/3 alive checks)", alive_checks);
-        // Marge fixe post-stabilisation pour laisser la PLT se construire
-        if (is_ps4_bc)
-            usleep(2000000); // +2s PS4 BC
-        else
-            usleep(1000000); // +1s PS5 natif
-    } else {
-        plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
-    }
-
-    // ── 1b. FAKELIB mount (apres stabilisation) ───────────────────────────
     if (fakelib_wanted && resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id))) {
         char fakelib_check[PATH_MAX];
         snprintf(fakelib_check, sizeof(fakelib_check),
@@ -417,6 +390,37 @@ static void inject_into_game(pid_t pid, const char *title_id,
         } else {
             plugin_log("[Fakelib] No app0/fakelib for %s, skipping", title_id);
         }
+    }
+
+    // ── 2. Attente initialisation process ────────────────────────────────
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
+
+    if (!is_lso) {
+        if (is_ps4_bc) {
+            // ── PS4 BC : poll actif + marge ──────────────────────────────
+            plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
+            int alive_checks = 0;
+            for (int i = 0; i < 40 && alive_checks < 3; i++) {
+                usleep(500000);
+                if (IsProcessRunning(pid))
+                    alive_checks++;
+                else
+                    alive_checks = 0;
+            }
+            plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
+            usleep(2000000); // +2s marge PLT
+        } else {
+            // ── PS5 natif : timer identique au zip ref (1s) ──────────────
+            plugin_log("[PLT] PS5 natif: waiting for process initialization...");
+            int alive = 0;
+            for (int i = 0; i < 10; i++) {
+                usleep(100000);
+                if (IsProcessRunning(pid)) alive++;
+            }
+            plugin_log("[PLT] PS5 natif: process alive %d/10 checks", alive);
+        }
+    } else {
+        plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
     }
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
