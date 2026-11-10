@@ -354,11 +354,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
     if (is_lso) {
         plugin_log("========================================");
         plugin_log("[LSO] GTA ONLINE PS4 DETECTED");
-        plugin_log("[LSO] Waiting 2s then suspending pid %d", pid);
+        plugin_log("[LSO] Waiting 3s then suspending pid %d", pid);
         plugin_log("========================================");
-        // 2s : LSO est CUSA (PS4 BC) donc demarre plus tard que PS5 natif
-        // laisser le process terminer son init avant suspension
-        usleep(2000000);
+        // 3s fixe : LSO est CUSA (PS4 BC), demarre plus tard
+        // IsProcessRunning retourne true trop tot, sleep fixe plus fiable
+        usleep(3000000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
         plugin_log("[LSO] Game frozen - safe to inject");
