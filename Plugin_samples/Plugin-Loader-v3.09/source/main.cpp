@@ -393,27 +393,29 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
+
+    // Pour LSO: pas d'attente - jeu deja suspendu immediatement
     if (!is_lso) {
-    plugin_log("[PLT] Waiting for process to stabilize...");
-    // Attente active : on poll jusqu'à ce que le process soit vivant
-    // ET on laisse encore une marge fixe après pour que la PLT soit prete
-    int alive_checks = 0;
-    for (int i = 0; i < 40 && alive_checks < 3; i++) {
-        usleep(500000); // 0.5s par iteration
-        if (IsProcessRunning(pid))
-            alive_checks++;
+        plugin_log("[PLT] Waiting for process to stabilize (%s)...",
+                   is_ps4_bc ? "PS4 BC" : "PS5 natif");
+        // Poll toutes les 500ms jusqu'a 3 checks vivants consecutifs (max 20s)
+        int alive_checks = 0;
+        for (int i = 0; i < 40 && alive_checks < 3; i++) {
+            usleep(500000);
+            if (IsProcessRunning(pid))
+                alive_checks++;
+            else
+                alive_checks = 0; // reset si le process disparait entre deux checks
+        }
+        plugin_log("[PLT] Process stable (%d/3 alive checks)", alive_checks);
+        // Marge supplementaire post-stabilisation pour laisser la PLT se construire
+        if (is_ps4_bc)
+            usleep(2000000); // +2s PS4 BC
         else
-            alive_checks = 0; // reset si le process disparait entre deux checks
-    }
-    plugin_log("[PLT] Process stable after ~%gs (%d/3 alive checks)",
-               alive_checks * 0.5, alive_checks);
-    // Marge supplementaire post-stabilisation pour PS4 BC
-    if (is_ps4_bc)
-        usleep(2000000); // +2s PS4 BC
-        else
-           usleep(1000000); // +1s PS5 natif
+            usleep(1000000); // +1s PS5 natif
     } else {
-      plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
+        plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
     }
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
@@ -426,8 +428,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
     int success_count = 0;
     HookSession hook_session;
-
-    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
@@ -520,8 +520,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PRX LOADER v3.09 + BACKPORK ===");
-    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.09===");    
+    plugin_log("=== PRX LOADER v3.09 + BACKPORK ===");   
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
