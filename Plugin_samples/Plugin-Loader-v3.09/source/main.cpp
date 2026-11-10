@@ -354,11 +354,11 @@ static void inject_into_game(pid_t pid, const char *title_id,
     if (is_lso) {
         plugin_log("========================================");
         plugin_log("[LSO] GTA ONLINE PS4 DETECTED");
-        plugin_log("[LSO] Waiting 3s then suspending pid %d", pid);
+        plugin_log("[LSO] Waiting 500ms then suspending pid %d", pid);
         plugin_log("========================================");
-        // 3s fixe : LSO est CUSA (PS4 BC), demarre plus tard
-        // IsProcessRunning retourne true trop tot, sleep fixe plus fiable
-        usleep(3000000);
+        // 500ms : laisser le process terminer son init minimal
+        // (meme timing que la v2.11 qui fonctionnait)
+        usleep(500000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
         plugin_log("[LSO] Game frozen - safe to inject");
@@ -406,10 +406,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
             if (IsProcessRunning(pid))
                 alive_checks++;
             else
-                alive_checks = 0; // reset si le process disparait entre deux checks
+                alive_checks = 0;
         }
         plugin_log("[PLT] Process stable (%d/3 alive checks)", alive_checks);
-        // Marge supplementaire post-stabilisation pour laisser la PLT se construire
+        // Marge fixe post-stabilisation pour laisser la PLT se construire
         if (is_ps4_bc)
             usleep(2000000); // +2s PS4 BC
         else
@@ -441,7 +441,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
             // 750ms apres suspension pour PS4 BC et PS5 natif
-            usleep(1000000);
+            usleep(750000);
         } else {
             plugin_log("[PLT] LSO mode: game already suspended (500ms deja attendu)");
         }
@@ -478,7 +478,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
 
         // Final resume
-        usleep(1000000);
+        usleep(500000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
 
@@ -578,6 +578,8 @@ int main()
     }
 
     printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
+
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
