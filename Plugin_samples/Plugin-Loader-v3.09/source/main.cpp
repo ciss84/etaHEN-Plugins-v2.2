@@ -194,8 +194,6 @@ static char *try_mount_fakelib(const char *title_id, const char *sandbox_id)
 //  Wait for a process to exit (kqueue / EVFILT_PROC)
 // ─────────────────────────────────────────────────────────────────────────────
 
-static bool IsProcessRunning(pid_t pid);
-
 static void wait_for_pid_exit(pid_t pid)
 {
     int kq = kqueue();
@@ -207,28 +205,19 @@ static void wait_for_pid_exit(pid_t pid)
     if (kevent(kq, &kev, 1, nullptr, 0, nullptr) == -1) {
         plugin_log("[Wait] kevent registration failed for pid %d: %s", pid, strerror(errno));
         close(kq);
-        for (int i = 0; i < 120 && IsProcessRunning(pid); i++)
-            sleep(1);
+        sleep(3);
         return;
     }
 
     plugin_log("[Wait] Watching pid %d for exit...", pid);
     while (1) {
         struct kevent ev;
-        struct timespec timeout = {2, 0};
-        int nev = kevent(kq, nullptr, 0, &ev, 1, &timeout);
+        int nev = kevent(kq, nullptr, 0, &ev, 1, nullptr);
         if (nev > 0 && (ev.fflags & NOTE_EXIT)) {
-            plugin_log("[Wait] pid %d exited (kqueue)", pid);
+            plugin_log("[Wait] pid %d exited", pid);
             break;
         }
-        if (nev < 0) {
-            plugin_log("[Wait] kevent error: %s", strerror(errno));
-            break;
-        }
-        if (!IsProcessRunning(pid)) {
-            plugin_log("[Wait] pid %d no longer running (poll check)", pid);
-            break;
-        }
+        if (nev < 0) break;
     }
     close(kq);
 }
@@ -336,25 +325,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("Injecting into %s (pid %d)", title_id, pid);
     plugin_log("========================================");
 
-    // ── 0. DETECTION LSO ─────────────────────────────────────────────────
-    bool is_lso = false;
-    for (const auto &prx : prx_list) {
-        if (strstr(prx.path.c_str(), "LSO") != nullptr) {
-            is_lso = true;
-            break;
-        }
-    }
-    if (is_lso) {
-        plugin_log("========================================");
-        plugin_log("[LSO] GTA ONLINE PS4 DETECTED");
-        plugin_log("[LSO] Waiting 500ms then suspending pid %d", pid);
-        plugin_log("========================================");
-        usleep(500000);
-        sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        plugin_log("[LSO] Game frozen - safe to inject");
-    }
-
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
@@ -384,33 +354,13 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
-
-    if (!is_lso) {
-        if (is_ps4_bc) {
-            // PS4 BC non-LSO : poll actif + marge 2s
-            plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
-            int alive_checks = 0;
-            for (int i = 0; i < 40 && alive_checks < 3; i++) {
-                usleep(500000);
-                if (IsProcessRunning(pid)) alive_checks++;
-                else alive_checks = 0;
-            }
-            plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
-            usleep(2000000);
-        } else {
-            // PS5 natif : timer original (1s)
-            plugin_log("[PLT] PS5: waiting for process initialization...");
-            int alive = 0;
-            for (int i = 0; i < 10; i++) {
-                usleep(100000);
-                if (IsProcessRunning(pid)) alive++;
-            }
-            plugin_log("[PLT] PS5: process alive %d/10 checks", alive);
-        }
-    } else {
-        plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
+    plugin_log("[PLT] Waiting for process initialization...");
+    int alive = 0;
+    for (int i = 0; i < 10; i++) {
+        usleep(100000);
+        if (IsProcessRunning(pid)) alive++;
     }
+    plugin_log("[PLT] Process alive: %d/10 checks", alive);
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
     UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
@@ -423,6 +373,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     int success_count = 0;
     HookSession hook_session;
 
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
@@ -431,25 +382,16 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
-        if (!is_lso) {
-            sceKernelPrepareToSuspendProcess(pid);
-            sceKernelSuspendProcess(pid);
-            usleep(750000);
-        } else {
-            plugin_log("[PLT] LSO mode: game already suspended");
-        }
-
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        usleep(750000);
+        
         for (const auto &prx : prx_list) {
-            int effective_delay = prx.frame_delay;
-            if (is_lso) {
-                effective_delay = 300;
-                plugin_log("[LSO] Forcing frame_delay = 300 frames (~5s)");
-            }
-            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
+            plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
 
             uintptr_t stuff_addr = 0;
 
-            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, effective_delay, &stuff_addr)) {
+            if (HookGame(hijacker, text_base, prx.path.c_str(), hook_session, false, prx.frame_delay, &stuff_addr)) {
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
                            
@@ -512,8 +454,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PRX LOADER v3.06 + BACKPORK ===");
-    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.06===");    
+    plugin_log("=== PRX LOADER v3.09 + BACKPORK ===");
+    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.09===");    
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -569,8 +511,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
-    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.06 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
