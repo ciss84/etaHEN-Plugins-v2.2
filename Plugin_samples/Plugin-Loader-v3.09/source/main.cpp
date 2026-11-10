@@ -24,7 +24,7 @@
 // : le kernel reutilise parfois le pid presque immediatement et/ou le
 // process relance pas encore totalement stabilise (PLT table, sandbox) cote
 // kernel au moment ou le loader essaie deja de s'attacher dessus.
-#define RELAUNCH_COOLDOWN_SECONDS 15
+#define RELAUNCH_COOLDOWN_SECONDS 3
 
 typedef struct app_info {
     uint32_t app_id;
@@ -268,31 +268,11 @@ static int cleanup_directory(const char *path)
 
 static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_mount)
 {
-    // Attendre que le kernel libere vraiment le process
-    // (NOTE_EXIT arrive parfois avant la liberation complete des ressources)
-    for (int i = 0; i < 10 && IsProcessRunning(pid); i++) {
-        plugin_log("[Cleanup] Waiting for pid %d to fully die... (%d/10)", pid, i + 1);
-        usleep(500000);
-    }
-
     if (fakelib_mount) {
-        plugin_log("[Cleanup] Unmounting %s", fakelib_mount);
-        unmount(fakelib_mount, 0);
-        usleep(200000);
-        free(fakelib_mount);
-    }
-
-    // Ne toucher au sandbox que si c'est un jeu PPSA (PS5 natif).
-    // Pour les jeux PS4 BC (CUSA/SCUS), le sandbox est gere par le systeme
-    // et tenter de le supprimer manuellement crash la console au reload.
-    bool is_ppsa = sandbox_id && strncmp(sandbox_id, "PPSA", 4) == 0;
-
-    if (is_ppsa) {
         char sandbox_app0[PATH_MAX];
         snprintf(sandbox_app0, sizeof(sandbox_app0),
                  "/mnt/sandbox/%s/app0", sandbox_id);
 
-        // Attendre que le systeme demontre le sandbox app0
         int wait_count = 0;
         struct stat st;
         while (stat(sandbox_app0, &st) == 0 && wait_count < 30) {
@@ -300,16 +280,19 @@ static void cleanup_after_game(pid_t pid, const char *sandbox_id, char *fakelib_
             wait_count++;
         }
 
+        plugin_log("[Cleanup] Unmounting %s", fakelib_mount);
+        unmount(fakelib_mount, 0);
+
         char sandbox_dir[PATH_MAX];
         snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sandbox_id);
         plugin_log("[Cleanup] Removing %s", sandbox_dir);
         if (cleanup_directory(sandbox_dir) == 0) {
             plugin_log("[Cleanup] Sandbox removed");
+            printf_notification("Sandbox %s cleaned up     ", sandbox_id);
         } else {
             plugin_log("[Cleanup] Failed to remove sandbox: %s", strerror(errno));
         }
-    } else if (sandbox_id && sandbox_id[0] != '\0') {
-        plugin_log("[Cleanup] PS4 BC sandbox - skipping manual removal");
+        free(fakelib_mount);
     }
 }
 
@@ -357,11 +340,10 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("========================================");
 
     // ── 0. DETECTION LSO ─────────────────────────────────────────────────
-    // PS4 BC (CUSA) : LSOPlugin.prx  -> suspension immediate
-    // PS5 natif (PPSA) : LSO-1.010.prx -> PAS de suspension immediate, timing normal
-    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
-
+    // PS4 BC (CUSA) : LSOPlugin.prx
+    // PS5 natif (PPSA) : LSO-1.010.prx
     bool is_lso = false;
+
     for (const auto &prx : prx_list) {
         if (strstr(prx.path.c_str(), "LSO") != nullptr) {
             is_lso = true;
@@ -369,21 +351,17 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
     }
 
-    // Suspension immediate uniquement pour GTA PS4 BC (CUSA)
-    // Pour PPSA: le timing normal fonctionne, pas besoin de suspendre ici
-    bool lso_early_suspend = is_lso && is_ps4_bc;
-
-    if (lso_early_suspend) {
+    if (is_lso) {
         plugin_log("========================================");
-        plugin_log("[LSO] GTA ONLINE PS4 BC DETECTED");
+        plugin_log("[LSO] GTA ONLINE PS4 DETECTED");
         plugin_log("[LSO] Waiting 500ms then suspending pid %d", pid);
         plugin_log("========================================");
-        usleep(750000);
+        // 500ms : laisser le process terminer son init minimal
+        // (meme timing que la v2.11 qui fonctionnait)
+        usleep(500000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
         plugin_log("[LSO] Game frozen - safe to inject");
-    } else if (is_lso && !is_ps4_bc) {
-        plugin_log("[LSO] GTA ONLINE PS5 DETECTED - using normal timing");
     }
 
     // ── 1. FAKELIB ────────────────────────────────────────────────────────
@@ -415,9 +393,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-    // Pour LSO PS4 BC: pas d'attente - jeu deja suspendu immediatement
-    // Pour PPSA (PS5): toujours attendre l'init normale
-    if (!lso_early_suspend) {
+    // Pour LSO: pas d'attente - jeu deja suspendu immediatement
+    if (!is_lso) {
         plugin_log("[PLT] Waiting for process initialization...");
         int alive = 0;
         for (int i = 0; i < 10; i++) {
@@ -426,7 +403,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         }
         plugin_log("[PLT] Process alive: %d/10 checks", alive);
     } else {
-        plugin_log("[PLT] LSO PS4 mode: skipping init wait (already suspended)");
+        plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
     }
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
@@ -440,6 +417,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     int success_count = 0;
     HookSession hook_session;
 
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
@@ -448,26 +426,23 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
-        // Pour LSO PS4 BC: deja suspendu en etape 0, pas de re-suspension
-        // Pour PPSA et tout le reste: suspension normale
-        if (!lso_early_suspend) {
+        // Pour LSO: deja suspendu en etape 0, pas de re-suspension
+        if (!is_lso) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
+            // 750ms apres suspension pour PS4 BC et PS5 natif
             usleep(1000000);
         } else {
-            plugin_log("[PLT] LSO PS4 mode: game already suspended (500ms deja attendu)");
+            plugin_log("[PLT] LSO mode: game already suspended (500ms deja attendu)");
         }
 
         for (const auto &prx : prx_list) {
-            // Pour LSO PS4 BC seulement: forcer frame_delay = 500
-            // PPSA utilise le frame_delay de la config
-
+            // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
             int effective_delay = prx.frame_delay;
-            if (lso_early_suspend) {
-                effective_delay = 1000;
-                plugin_log("[LSO PS4] Forcing frame_delay = 500 frames (~8s)");
+            if (is_lso) {
+                effective_delay = 300;
+                plugin_log("[LSO] Forcing frame_delay = 300 frames (~5s)");
             }
-
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), effective_delay);
 
             uintptr_t stuff_addr = 0;
@@ -519,7 +494,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("[Wait] Waiting for game (pid %d) to exit...", pid);
     wait_for_pid_exit(pid);
 
-    cleanup_after_game(pid, sandbox_id, fakelib_mount);
+    if (fakelib_mount)
+        cleanup_after_game(pid, sandbox_id, fakelib_mount);
 
     // ── 5. Cooldown anti quit+relaunch-trop-vite ──────────────────────────
     plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
@@ -591,8 +567,7 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
-
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.09 By @84Ciss ", fw_major, fw_minor);
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
     pid_t child_pid = -1;
@@ -656,10 +631,12 @@ int main()
 
                 pid_t game_pid = child_pid;
                 child_pid = -1;
-                wait_for_pid_exit(game_pid);
-                cleanup_after_game(game_pid, sid, fml);
-                plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
-                sleep(RELAUNCH_COOLDOWN_SECONDS);
+                if (fml) {
+                    wait_for_pid_exit(game_pid);
+                    cleanup_after_game(game_pid, sid, fml);
+                    plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
+                    sleep(RELAUNCH_COOLDOWN_SECONDS);
+                }
                 continue;
             }
 
