@@ -393,7 +393,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-if (!is_lso) {
+    if (!is_lso) {
     plugin_log("[PLT] Waiting for process to stabilize...");
     // Attente active : on poll jusqu'à ce que le process soit vivant
     // ET on laisse encore une marge fixe après pour que la PLT soit prete
@@ -410,11 +410,11 @@ if (!is_lso) {
     // Marge supplementaire post-stabilisation pour PS4 BC
     if (is_ps4_bc)
         usleep(2000000); // +2s PS4 BC
-    else
-        usleep(1000000); // +1s PS5 natif
-} else {
-    plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
-}
+        else
+           usleep(1000000); // +1s PS5 natif
+    } else {
+      plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
+    }
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
     UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
