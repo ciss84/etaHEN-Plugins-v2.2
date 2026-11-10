@@ -207,6 +207,7 @@ static void wait_for_pid_exit(pid_t pid)
     if (kevent(kq, &kev, 1, nullptr, 0, nullptr) == -1) {
         plugin_log("[Wait] kevent registration failed for pid %d: %s", pid, strerror(errno));
         close(kq);
+        // Fallback polling si kqueue echoue
         for (int i = 0; i < 120 && IsProcessRunning(pid); i++)
             sleep(1);
         return;
@@ -215,6 +216,7 @@ static void wait_for_pid_exit(pid_t pid)
     plugin_log("[Wait] Watching pid %d for exit...", pid);
     while (1) {
         struct kevent ev;
+        // Timeout 2 secondes par iteration - evite le blocage infini
         struct timespec timeout = {2, 0};
         int nev = kevent(kq, nullptr, 0, &ev, 1, &timeout);
         if (nev > 0 && (ev.fflags & NOTE_EXIT)) {
@@ -225,6 +227,7 @@ static void wait_for_pid_exit(pid_t pid)
             plugin_log("[Wait] kevent error: %s", strerror(errno));
             break;
         }
+        // nev == 0 = timeout -> verifier si process encore vivant
         if (!IsProcessRunning(pid)) {
             plugin_log("[Wait] pid %d no longer running (poll check)", pid);
             break;
@@ -337,18 +340,24 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("========================================");
 
     // ── 0. DETECTION LSO ─────────────────────────────────────────────────
+    // PS4 BC (CUSA) : LSOPlugin.prx
+    // PS5 natif (PPSA) : LSO-1.010.prx
     bool is_lso = false;
+
     for (const auto &prx : prx_list) {
         if (strstr(prx.path.c_str(), "LSO") != nullptr) {
             is_lso = true;
             break;
         }
     }
+
     if (is_lso) {
         plugin_log("========================================");
         plugin_log("[LSO] GTA ONLINE PS4 DETECTED");
         plugin_log("[LSO] Waiting 500ms then suspending pid %d", pid);
         plugin_log("========================================");
+        // 500ms : laisser le process terminer son init minimal
+        // (meme timing que la v2.11 qui fonctionnait)
         usleep(500000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
@@ -388,25 +397,27 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
     if (!is_lso) {
         if (is_ps4_bc) {
-            // PS4 BC non-LSO : poll actif + marge 2s
+            // ── PS4 BC : poll actif + marge ──────────────────────────────
             plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
             int alive_checks = 0;
             for (int i = 0; i < 40 && alive_checks < 3; i++) {
                 usleep(500000);
-                if (IsProcessRunning(pid)) alive_checks++;
-                else alive_checks = 0;
+                if (IsProcessRunning(pid))
+                    alive_checks++;
+                else
+                    alive_checks = 0;
             }
             plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
-            usleep(2000000);
+            usleep(2000000); // +2s marge PLT
         } else {
-            // PS5 natif : timer original (1s)
-            plugin_log("[PLT] PS5: waiting for process initialization...");
+            // ── PS5 natif : timer identique au zip ref (1s) ──────────────
+            plugin_log("[PLT] PS5 natif: waiting for process initialization...");
             int alive = 0;
             for (int i = 0; i < 10; i++) {
                 usleep(100000);
                 if (IsProcessRunning(pid)) alive++;
             }
-            plugin_log("[PLT] PS5: process alive %d/10 checks", alive);
+            plugin_log("[PLT] PS5 natif: process alive %d/10 checks", alive);
         }
     } else {
         plugin_log("[PLT] LSO mode: skipping init wait (already suspended)");
@@ -422,7 +433,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
     int success_count = 0;
     HookSession hook_session;
-
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
@@ -431,15 +441,18 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
+        // Pour LSO: deja suspendu en etape 0, pas de re-suspension
         if (!is_lso) {
             sceKernelPrepareToSuspendProcess(pid);
             sceKernelSuspendProcess(pid);
+            // 750ms apres suspension pour PS4 BC et PS5 natif
             usleep(750000);
         } else {
-            plugin_log("[PLT] LSO mode: game already suspended");
+            plugin_log("[PLT] LSO mode: game already suspended (500ms deja attendu)");
         }
 
         for (const auto &prx : prx_list) {
+            // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
             int effective_delay = prx.frame_delay;
             if (is_lso) {
                 effective_delay = 300;
