@@ -1,4 +1,4 @@
-# etaHEN-Plugins-Loader-v3.02 — Firmware update status (4.00 -> 14.10) WIP
+# etaHEN-Plugins-Loader-v3.03 — Firmware update status (4.00 -> 14.10) WIP
 
 This document summarizes what has been updated in the `etaHEN-Plugins` tree
 to support recent firmwares, what is still unverified, and what is
@@ -184,8 +184,7 @@ SceShellCore patch (`/data` sandbox access, etc.), via binary pattern + offset.
 
 | Range | Status |
 |---|---|
-| 4.00 -> 12.70 | ✅ exact table, patterns verified |
-| **13.00 -> 13.60** | ⚠️ **fallback mode only** |
+| 4.00 -> 13.60 | ✅ fonctionne (13.40/13.42/13.60 exact table, patterns verified on dump |
 | **14.00 / 14.10** | ❌ no constant or pattern -> not handled |
 
 The fallback mode (`sc_lookup_patch_set` + `sc_pattern_count`):
