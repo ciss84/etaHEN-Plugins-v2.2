@@ -312,7 +312,7 @@ struct GameInjectorConfig {
 	// Utilisee quand aucune section [TITLEID] precise n'a sa propre ligne
 	// fakelib=. Defaut : true (comportement d'avant, inchange si [DEFAULT]
 	// n'est pas present dans le .ini).
-	bool default_fakelib = true;
+	bool default_fakelib = false;
 };
 
 void plugin_log(const char* fmt, ...);
