@@ -360,7 +360,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         // (meme timing que la v2.11 qui fonctionnait)
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);        
+        usleep(500000);        
         plugin_log("[LSO] Game frozen - safe to inject");
     }
 
@@ -401,7 +401,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
             int alive_checks = 0;
             for (int i = 0; i < 40 && alive_checks < 3; i++) {
-                usleep(750000);
+                usleep(500000);
                 if (IsProcessRunning(pid))
                     alive_checks++;
                 else
@@ -443,7 +443,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);
+        usleep(1000000);
 
         for (const auto &prx : prx_list) {
             // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
