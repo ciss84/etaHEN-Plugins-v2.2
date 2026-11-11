@@ -441,12 +441,13 @@ static void inject_into_game(pid_t pid, const char *title_id,
         uint64_t text_base = hijacker->getEboot()->imagebase();
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
+        sceKernelPrepareToSuspendProcess(pid);
+        sceKernelSuspendProcess(pid);
+        // 750ms apres suspension pour PS4 BC et PS5 natif
+        usleep(750000);
+
         // Pour LSO: deja suspendu en etape 0, pas de re-suspension
         if (!is_lso) {
-            sceKernelPrepareToSuspendProcess(pid);
-            sceKernelSuspendProcess(pid);
-            // 750ms apres suspension pour PS4 BC et PS5 natif
-            usleep(750000);
         } else {
             plugin_log("[PLT] LSO mode: game already suspended (500ms deja attendu)");
         }
