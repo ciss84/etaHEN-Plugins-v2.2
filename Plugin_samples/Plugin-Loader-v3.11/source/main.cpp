@@ -401,14 +401,14 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
             int alive_checks = 0;
             for (int i = 0; i < 40 && alive_checks < 3; i++) {
-                usleep(500000);
+                usleep(100000);
                 if (IsProcessRunning(pid))
                     alive_checks++;
                 else
                     alive_checks = 0;
             }
             plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
-            usleep(2500000); // +2s marge PLT
+            usleep(1000000); // +2s marge PLT
         } else {
             // ── PS5 natif : timer identique au zip ref (1s) ──────────────
             plugin_log("[PLT] PS5 natif: waiting for process initialization...");
