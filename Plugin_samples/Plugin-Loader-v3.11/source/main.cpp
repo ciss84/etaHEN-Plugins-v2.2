@@ -503,9 +503,33 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("[Wait] Waiting for game (pid %d) to exit...", pid);
     wait_for_pid_exit(pid);
 
-    if (fakelib_mount)
+    if (fakelib_mount){
         cleanup_after_game(pid, sandbox_id, fakelib_mount);
-
+       } else if (is_ps4_bc) {
+        // PS4 BC (CUSA) : cleanup sandbox comme PS5
+        char ps4_sandbox_id[32] = {};
+        if (resolve_sandbox_id(title_id, ps4_sandbox_id, sizeof(ps4_sandbox_id))) {
+            char sandbox_app0[PATH_MAX];
+            snprintf(sandbox_app0, sizeof(sandbox_app0),
+                     "/mnt/sandbox/%s/app0", ps4_sandbox_id);
+            int wait_count = 0;
+            struct stat st;
+            while (stat(sandbox_app0, &st) == 0 && wait_count < 30) {
+                sleep(1);
+                wait_count++;
+            }
+            char sandbox_dir[PATH_MAX];
+            snprintf(sandbox_dir, sizeof(sandbox_dir),
+                     "/mnt/sandbox/%s", ps4_sandbox_id);
+            plugin_log("[Cleanup PS4] Removing sandbox %s", sandbox_dir);
+            if (cleanup_directory(sandbox_dir) == 0) {
+                plugin_log("[Cleanup PS4] Sandbox removed");
+                printf_notification("PS4 Sandbox %s cleaned     ", ps4_sandbox_id);
+            } else {
+                plugin_log("[Cleanup PS4] Failed: %s", strerror(errno));
+            }
+        }
+    }
     // ── 5. Cooldown anti quit+relaunch-trop-vite ──────────────────────────
     plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
     sleep(RELAUNCH_COOLDOWN_SECONDS);
