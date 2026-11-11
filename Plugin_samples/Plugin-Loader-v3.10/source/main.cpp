@@ -445,13 +445,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
         sceKernelSuspendProcess(pid);
         usleep(750000);
 
-        // Pour LSO: deja suspendu en etape 0, pas de re-suspension
-        if (!is_lso) {
-            usleep(750000);
-        } else {
-            plugin_log("[PLT] LSO mode: game already suspended (500ms deja attendu)");
-        }
-
         for (const auto &prx : prx_list) {
             // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
             int effective_delay = prx.frame_delay;
