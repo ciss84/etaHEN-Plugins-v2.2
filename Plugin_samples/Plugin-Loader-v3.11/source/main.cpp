@@ -358,9 +358,9 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("========================================");
         // 500ms : laisser le process terminer son init minimal
         // (meme timing que la v2.11 qui fonctionnait)
+        usleep(500000);
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(500000);        
         plugin_log("[LSO] Game frozen - safe to inject");
     }
 
@@ -408,7 +408,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     alive_checks = 0;
             }
             plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
-            usleep(2500000); // +2s marge PLT
+            usleep(2000000); // +2s marge PLT
         } else {
             // ── PS5 natif : timer identique au zip ref (1s) ──────────────
             plugin_log("[PLT] PS5 natif: waiting for process initialization...");
@@ -443,7 +443,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(1000000);
+        usleep(2500000);
 
         for (const auto &prx : prx_list) {
             // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
