@@ -443,7 +443,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);
+        usleep(1000000);
 
         for (const auto &prx : prx_list) {
             // Pour LSO: forcer frame_delay = 300 (comme v2.11 qui fonctionne)
@@ -464,7 +464,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 sceKernelResumeProcess(pid);
                 
                 // Attends que le PRX se charge (plus long sur PS4 BC)
-                sleep(3);   
+                sleep(4);   
                 
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
