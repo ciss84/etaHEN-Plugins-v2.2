@@ -401,7 +401,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
             int alive_checks = 0;
             for (int i = 0; i < 40 && alive_checks < 3; i++) {
-                usleep(750000);
+                usleep(1000000);
                 if (IsProcessRunning(pid))
                     alive_checks++;
                 else
@@ -414,7 +414,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
             plugin_log("[PLT] PS5 natif: waiting for process initialization...");
             int alive = 0;
             for (int i = 0; i < 10; i++) {
-                usleep(750000);
+                usleep(1000000);
                 if (IsProcessRunning(pid)) alive++;
             }
             plugin_log("[PLT] PS5 natif: process alive %d/10 checks", alive);
