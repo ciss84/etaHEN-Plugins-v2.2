@@ -408,13 +408,13 @@ static void inject_into_game(pid_t pid, const char *title_id,
                     alive_checks = 0;
             }
             plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
-            usleep(1000000); // +2s marge PLT
+            usleep(2500000); // +2s marge PLT
         } else {
             // ── PS5 natif : timer identique au zip ref (1s) ──────────────
             plugin_log("[PLT] PS5 natif: waiting for process initialization...");
             int alive = 0;
             for (int i = 0; i < 10; i++) {
-                usleep(750000);
+                usleep(1000000);
                 if (IsProcessRunning(pid)) alive++;
             }
             plugin_log("[PLT] PS5 natif: process alive %d/10 checks", alive);
