@@ -399,12 +399,15 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        // GTA5 PS4 BC + PS5 : demarre plus vite, besoin de plus de temps avant hook
+        // GTA5 : demarre plus vite, besoin de plus de temps avant hook
         bool is_gta5 = (strcmp(title_id, "CUSA00411") == 0 ||
                         strcmp(title_id, "CUSA00419") == 0 ||
                         strcmp(title_id, "PPSA04263") == 0 ||
                         strcmp(title_id, "PPSA04264") == 0);
-        usleep(is_gta5 ? 100000 : 500000);
+        // RDR2 : timing normal
+        bool is_rdr2 = (strcmp(title_id, "CUSA03041") == 0 ||
+                        strcmp(title_id, "CUSA08519") == 0);
+        usleep(is_gta5 ? 750000 : is_rdr2 ? 500000 : 500000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
