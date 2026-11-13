@@ -354,13 +354,29 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-    plugin_log("[PLT] Waiting for process initialization...");
-    int alive = 0;
-    for (int i = 0; i < 10; i++) {
-        usleep(100000);
-        if (IsProcessRunning(pid)) alive++; 
+    // PS4 BC (CUSA/SCUS) : emulation plus lente, PLT pas prete avant ~4s
+    // PS5 natif (PPSA)   : 1s suffit
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
+
+    if (is_ps4_bc) {
+        plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
+        int alive_checks = 0;
+        for (int i = 0; i < 40 && alive_checks < 3; i++) {
+            usleep(100000);
+            if (IsProcessRunning(pid)) alive_checks++;
+            else alive_checks = 0;
+        }
+        plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
+        usleep(2500000); // +2.5s marge PLT
+    } else {
+        plugin_log("[PLT] PS5 natif: waiting for process initialization...");
+        int alive = 0;
+        for (int i = 0; i < 10; i++) {
+            usleep(100000);
+            if (IsProcessRunning(pid)) alive++;
+        }
+        plugin_log("[PLT] PS5 natif: alive %d/10 checks", alive);
     }
-    plugin_log("[PLT] Process alive: %d/10 checks", alive);
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
     UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
@@ -373,7 +389,6 @@ static void inject_into_game(pid_t pid, const char *title_id,
     int success_count = 0;
     HookSession hook_session;
 
-    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
@@ -384,7 +399,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(500000);
+        // GTA5 PS4 BC + PS5 : demarre plus vite, besoin de plus de temps avant hook
+        bool is_gta5 = (strcmp(title_id, "CUSA00411") == 0 ||
+                        strcmp(title_id, "CUSA00419") == 0 ||
+                        strcmp(title_id, "PPSA04263") == 0 ||
+                        strcmp(title_id, "PPSA04264") == 0);
+        usleep(is_gta5 ? 500000 : 100000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
