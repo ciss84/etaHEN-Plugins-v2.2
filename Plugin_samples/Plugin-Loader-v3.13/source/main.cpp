@@ -404,7 +404,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                         strcmp(title_id, "CUSA00419") == 0 ||
                         strcmp(title_id, "PPSA04263") == 0 ||
                         strcmp(title_id, "PPSA04264") == 0);
-        usleep(is_gta5 ? 100000);
+        usleep(is_gta5 ? 100000 : 500000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
