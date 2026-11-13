@@ -362,12 +362,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
         int alive_checks = 0;
         for (int i = 0; i < 40 && alive_checks < 3; i++) {
-            usleep(100000);
+            usleep(1000000);
             if (IsProcessRunning(pid)) alive_checks++;
             else alive_checks = 0;
         }
         plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
-        usleep(2500000); // +2.5s marge PLT
+        usleep(3000000); // +2.5s marge PLT
     } else {
         plugin_log("[PLT] PS5 natif: waiting for process initialization...");
         int alive = 0;
@@ -404,7 +404,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                         strcmp(title_id, "CUSA00419") == 0 ||
                         strcmp(title_id, "PPSA04263") == 0 ||
                         strcmp(title_id, "PPSA04264") == 0);
-        usleep(is_gta5 ? 500000 : 100000);
+        usleep(is_gta5 ? 100000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
