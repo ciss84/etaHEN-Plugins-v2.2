@@ -330,7 +330,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     char *fakelib_mount = nullptr;
 
     auto fakelib_cfg  = config.fakelib_enabled.find(std::string(title_id));
-    bool fakelib_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
+    bool fakelib_wanted = (strncmp(title_id, "CUSA", 4) != 0) &&
                           (fakelib_cfg != config.fakelib_enabled.end() ? fakelib_cfg->second
                                                                        : config.default_fakelib);
 
@@ -357,7 +357,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("[PLT] Waiting for process initialization...");
     int alive = 0;
     for (int i = 0; i < 10; i++) {
-        usleep(50000);
+        //usleep(100000);
         if (IsProcessRunning(pid)) alive++;
     }
     plugin_log("[PLT] Process alive: %d/10 checks", alive);
@@ -384,7 +384,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);
+        usleep(500000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -395,15 +395,15 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 plugin_log("[PLT] Hook OK: %s | stuff_addr: 0x%llx", prx.path.c_str(), stuff_addr);
                 success_count++;
                            
-                sceKernelPrepareToResumeProcess(pid);
-                sceKernelResumeProcess(pid);
+                //sceKernelPrepareToResumeProcess(pid);
+                //sceKernelResumeProcess(pid);
                 
                 // Attends que le PRX se charge (plus long sur PS4 BC)
-                sleep(2);   
+                sleep(3);   
                 
                 if (&prx != &prx_list.back()) {
-                    sceKernelPrepareToSuspendProcess(pid);
-                    sceKernelSuspendProcess(pid);
+                    //sceKernelPrepareToSuspendProcess(pid);
+                    //sceKernelSuspendProcess(pid);
                     usleep(2500000);
                 }
             } else {
@@ -561,7 +561,7 @@ int main()
                 char sid[32] = {};
                 char *fml = nullptr;
                 auto fml_cfg = config.fakelib_enabled.find(std::string(title_id));
-                bool fml_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
+                bool fml_wanted = (strncmp(title_id, "CUSA", 4) != 0) &&
                                   (fml_cfg != config.fakelib_enabled.end() ? fml_cfg->second
                                                                            : config.default_fakelib);
                 if (fml_wanted && resolve_sandbox_id(title_id, sid, sizeof(sid))) {
