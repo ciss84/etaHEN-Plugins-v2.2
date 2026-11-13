@@ -384,7 +384,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);
+        usleep(500000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -404,19 +404,19 @@ static void inject_into_game(pid_t pid, const char *title_id,
                 if (&prx != &prx_list.back()) {
                     sceKernelPrepareToSuspendProcess(pid);
                     sceKernelSuspendProcess(pid);
-                    usleep(4500000);
+                    usleep(2500000);
                 }
             } else {
                 plugin_log("[PLT] FAILED to hook: %s", prx.path.c_str());
             }
         }
 
+        plugin_log("[PLT] %d/%zu PRX injected", success_count, prx_list.size());
+
         // Final resume
         usleep(500000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
-
-        plugin_log("[PLT] %d/%zu PRX injected", success_count, prx_list.size());
 
         if (fakelib_wanted)
             printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
@@ -424,7 +424,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                                 fakelib_mount ? "OK" : "none");
         else
             printf_notification("%d/%zu PRX injected into %s     ",
-                                success_count, prx_list.size(), title_id);
+                                success_count, prx_list.size(), title_id);                         
     } else {
         plugin_log("[PLT] FAILED to create Hijacker for pid %d", pid);
         if (fakelib_wanted)
