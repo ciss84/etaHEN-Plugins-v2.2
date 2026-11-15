@@ -578,11 +578,15 @@ int main()
 
                 char sid[32] = {};
                 char *fml = nullptr;
+
+                // Resoudre le sandbox AVANT que le jeu se ferme
+                resolve_sandbox_id(title_id, sid, sizeof(sid));
+
                 auto fml_cfg = config.fakelib_enabled.find(std::string(title_id));
                 bool fml_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
                                   (fml_cfg != config.fakelib_enabled.end() ? fml_cfg->second
                                                                            : config.default_fakelib);
-                if (fml_wanted && resolve_sandbox_id(title_id, sid, sizeof(sid))) {
+                if (fml_wanted && strlen(sid) > 0) {
                     char fakelib_check[PATH_MAX];
                     snprintf(fakelib_check, sizeof(fakelib_check),
                              "/mnt/sandbox/%s/app0/fakelib", sid);
@@ -595,11 +599,10 @@ int main()
 
                 pid_t game_pid = child_pid;
                 child_pid = -1;
+                wait_for_pid_exit(game_pid);
                 if (fml) {
-                    wait_for_pid_exit(game_pid);
                     cleanup_after_game(game_pid, sid, fml);
-                } else if (resolve_sandbox_id(title_id, sid, sizeof(sid))) {
-                    wait_for_pid_exit(game_pid);
+                } else if (strlen(sid) > 0) {
                     char sandbox_dir[PATH_MAX];
                     snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sid);
                     plugin_log("[Cleanup] Removing sandbox %s", sandbox_dir);
