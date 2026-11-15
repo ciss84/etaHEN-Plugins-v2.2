@@ -398,16 +398,18 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
         sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);
-        // GTA5 : demarre plus vite, besoin de plus de temps avant hook
-        bool is_gta5 = (strcmp(title_id, "CUSA00411") == 0 ||
-                        strcmp(title_id, "CUSA00419") == 0 ||
-                        strcmp(title_id, "PPSA04263") == 0 ||
-                        strcmp(title_id, "PPSA04264") == 0);               
+        sceKernelSuspendProcess(pid);            
         // RDR2 : timing normal
-        bool is_rdr2 = (strcmp(title_id, "CUSA03041") == 0 ||
-                        strcmp(title_id, "CUSA08519") == 0);
-        usleep(is_gta5 ? 750000 : is_rdr2 ? 750000);
+        bool is_timer_1 = (strcmp(title_id, "CUSA03041") == 0 ||
+                        strcmp(title_id, "CUSA08519") == 0 ||
+                        strcmp(title_id, "PPSA04263") == 0 ||
+                        strcmp(title_id, "PPSA04264") == 0);
+                        
+        // GTA5 : demarre plus vite, besoin de plus de temps avant hook
+        bool is_timer_2 = (strcmp(title_id, "CUSA00411") == 0 ||
+                        strcmp(title_id, "CUSA00419") == 0); 
+                                                                         
+        usleep(is_timer_1 ? 750000 : is_timer_2 ? 250000 : 250000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
