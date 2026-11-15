@@ -403,8 +403,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         bool is_gta5 = (strcmp(title_id, "CUSA00411") == 0 ||
                         strcmp(title_id, "CUSA00419") == 0 ||
                         strcmp(title_id, "PPSA04263") == 0 ||
-                        strcmp(title_id, "PPSA04264") == 0);
-        usleep(is_gta5 ? 100000 : 750000);                
+                        strcmp(title_id, "PPSA04264") == 0);               
         // RDR2 : timing normal
         bool is_rdr2 = (strcmp(title_id, "CUSA03041") == 0 ||
                         strcmp(title_id, "CUSA08519") == 0);
