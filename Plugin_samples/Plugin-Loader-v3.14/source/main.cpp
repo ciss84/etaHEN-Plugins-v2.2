@@ -384,7 +384,17 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
         sceKernelPrepareToSuspendProcess(pid);
         sceKernelSuspendProcess(pid);
-        usleep(750000);
+        //usleep(750000);
+        
+        bool is_rdr2 = (strcmp(title_id, "CUSA03041") == 0 ||
+                strcmp(title_id, "CUSA08519") == 0 ||
+                strcmp(title_id, "PPSA04263") == 0 ||
+                strcmp(title_id, "PPSA04264") == 0);
+
+        bool is_gta5 = (strcmp(title_id, "CUSA00411") == 0 ||
+                strcmp(title_id, "CUSA00419") == 0);
+
+        usleep(is_rdr2 ? 750000 : 250000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
