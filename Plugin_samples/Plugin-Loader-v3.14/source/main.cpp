@@ -330,7 +330,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     char *fakelib_mount = nullptr;
 
     auto fakelib_cfg  = config.fakelib_enabled.find(std::string(title_id));
-    bool fakelib_wanted = (strncmp(title_id, "CUSA", 4) != 0) &&
+    bool fakelib_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
                           (fakelib_cfg != config.fakelib_enabled.end() ? fakelib_cfg->second
                                                                        : config.default_fakelib);
 
@@ -354,41 +354,26 @@ static void inject_into_game(pid_t pid, const char *title_id,
     }
 
     // ── 2. Attente initialisation process ────────────────────────────────
-    // PS4 BC (CUSA/SCUS) : emulation plus lente, PLT pas prete avant ~4s
-    // PS5 natif (PPSA)   : 1s suffit
-    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
-
-    if (is_ps4_bc) {
-        plugin_log("[PLT] PS4 BC: waiting for process to stabilize...");
-        int alive_checks = 0;
-        for (int i = 0; i < 40 && alive_checks < 3; i++) {
-            usleep(1000000);
-            if (IsProcessRunning(pid)) alive_checks++;
-            else alive_checks = 0;
-        }
-        plugin_log("[PLT] PS4 BC: stable (%d/3 alive checks)", alive_checks);
-        usleep(3000000); // +2.5s marge PLT
-    } else {
-        plugin_log("[PLT] PS5 natif: waiting for process initialization...");
-        int alive = 0;
-        for (int i = 0; i < 10; i++) {
-            usleep(100000);
-            if (IsProcessRunning(pid)) alive++;
-        }
-        plugin_log("[PLT] PS5 natif: alive %d/10 checks", alive);
+    plugin_log("[PLT] Waiting for process initialization...");
+    int alive = 0;
+    for (int i = 0; i < 10; i++) {
+        usleep(100000);
+        if (IsProcessRunning(pid)) alive++;
     }
+    plugin_log("[PLT] Process alive: %d/10 checks", alive);
 
     // ── 3. PLT Hook ───────────────────────────────────────────────────────
     UniquePtr<Hijacker> hijacker = Hijacker::getHijacker(pid);
     if (!hijacker) {
         plugin_log("[PLT] First Hijacker attempt failed, retrying in 1s...");
-        sleep(3);
+        sleep(1);
         hijacker = Hijacker::getHijacker(pid);
     }
 
     int success_count = 0;
     HookSession hook_session;
 
+    bool is_ps4_bc = (strncmp(title_id, "PPSA", 4) != 0);
     plugin_log("[PLT] Title %s detecte comme %s -> marges de delai %s",
                title_id, is_ps4_bc ? "PS4 BC" : "PS5 natif",
                is_ps4_bc ? "renforcees (x2)" : "normales");
@@ -398,18 +383,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
         plugin_log("[PLT] Hijacker OK - text_base: 0x%llx", text_base);
 
         sceKernelPrepareToSuspendProcess(pid);
-        sceKernelSuspendProcess(pid);            
-        // RDR2 : timing normal
-        bool is_timer_1 = (strcmp(title_id, "CUSA03041") == 0 ||
-                        strcmp(title_id, "CUSA08519") == 0 ||
-                        strcmp(title_id, "PPSA04263") == 0 ||
-                        strcmp(title_id, "PPSA04264") == 0);
-                        
-        // GTA5 : demarre plus vite, besoin de plus de temps avant hook
-        bool is_timer_2 = (strcmp(title_id, "CUSA00411") == 0 ||
-                        strcmp(title_id, "CUSA00419") == 0); 
-                                                                         
-        usleep(is_timer_1 ? 750000 : is_timer_2 ? 250000 : 250000);
+        sceKernelSuspendProcess(pid);
+        usleep(750000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -436,12 +411,12 @@ static void inject_into_game(pid_t pid, const char *title_id,
             }
         }
 
-        plugin_log("[PLT] %d/%zu PRX injected", success_count, prx_list.size());
-
         // Final resume
         usleep(500000);
         sceKernelPrepareToResumeProcess(pid);
         sceKernelResumeProcess(pid);
+
+        plugin_log("[PLT] %d/%zu PRX injected", success_count, prx_list.size());
 
         if (fakelib_wanted)
             printf_notification("%d/%zu PRX injected into %s     \nFakelib: %s",
@@ -449,7 +424,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
                                 fakelib_mount ? "OK" : "none");
         else
             printf_notification("%d/%zu PRX injected into %s     ",
-                                success_count, prx_list.size(), title_id);                         
+                                success_count, prx_list.size(), title_id);
     } else {
         plugin_log("[PLT] FAILED to create Hijacker for pid %d", pid);
         if (fakelib_wanted)
@@ -479,8 +454,8 @@ static void inject_into_game(pid_t pid, const char *title_id,
 
 int main()
 {
-    plugin_log("=== PRX LOADER v3.13 + BACKPORK ===");
-    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.13===");    
+    plugin_log("=== PRX LOADER v3.14 + BACKPORK ===");
+    //plugin_log("===SHADOWMOD BACKPORK LOADER v3.14===");    
 
     payload_args_t *args = payload_get_args();
     kernel_base = args->kdata_base_addr;
@@ -536,8 +511,8 @@ int main()
         return -1;
     }
 
-    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.13 By @84Ciss ", fw_major, fw_minor);
-    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.13 By @84Ciss ", fw_major, fw_minor);
+    printf_notification("Prx-Loader FW: %x.%02x                      \nVer:3.14 By @84Ciss ", fw_major, fw_minor);
+    //printf_notification("ShadowMod FW: %x.%02x      \nVer:3.14 By @84Ciss ", fw_major, fw_minor);
 
     plugin_log("Monitoring SceSysCore.elf (pid %d)...", syscore_pid);
 
@@ -586,7 +561,7 @@ int main()
                 char sid[32] = {};
                 char *fml = nullptr;
                 auto fml_cfg = config.fakelib_enabled.find(std::string(title_id));
-                bool fml_wanted = (strncmp(title_id, "CUSA", 4) != 0) &&
+                bool fml_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
                                   (fml_cfg != config.fakelib_enabled.end() ? fml_cfg->second
                                                                            : config.default_fakelib);
                 if (fml_wanted && resolve_sandbox_id(title_id, sid, sizeof(sid))) {
