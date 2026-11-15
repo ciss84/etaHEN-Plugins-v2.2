@@ -452,11 +452,21 @@ static void inject_into_game(pid_t pid, const char *title_id,
         // Clean sandbox pour CUSA (sans fakelib)
         char sandbox_dir[PATH_MAX];
         snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sandbox_id);
-        plugin_log("[Cleanup] Removing sandbox %s", sandbox_dir);
-        if (cleanup_directory(sandbox_dir) == 0)
+        plugin_log("[Cleanup] sandbox_id=%s dir=%s", sandbox_id, sandbox_dir);
+
+        struct stat st_check;
+        if (stat(sandbox_dir, &st_check) != 0) {
+            plugin_log("[Cleanup] Sandbox deja supprime par le kernel (errno %d)", errno);
+            printf_notification("Sandbox %s already gone     ", sandbox_id);
+        } else if (cleanup_directory(sandbox_dir) == 0) {
+            plugin_log("[Cleanup] Sandbox removed");
             printf_notification("Sandbox %s cleaned up     ", sandbox_id);
-        else
+        } else {
             plugin_log("[Cleanup] Failed: %s", strerror(errno));
+            printf_notification("Sandbox %s clean failed     ", sandbox_id);
+        }
+    } else {
+        plugin_log("[Cleanup] sandbox_id vide pour %s - resolve a echoue", title_id);
     }
 
     // ── 5. Cooldown anti quit+relaunch-trop-vite ──────────────────────────
