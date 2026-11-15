@@ -407,7 +407,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         // RDR2 : timing normal
         bool is_rdr2 = (strcmp(title_id, "CUSA03041") == 0 ||
                         strcmp(title_id, "CUSA08519") == 0);
-        usleep(is_gta5 ? 750000 : is_rdr2 ? 750000 : 750000);
+        usleep(is_gta5 ? 750000 : is_rdr2 ? 750000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
