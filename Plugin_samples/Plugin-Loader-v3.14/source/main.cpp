@@ -598,9 +598,20 @@ int main()
                 if (fml) {
                     wait_for_pid_exit(game_pid);
                     cleanup_after_game(game_pid, sid, fml);
-                    plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
-                    sleep(RELAUNCH_COOLDOWN_SECONDS);
+                } else if (resolve_sandbox_id(title_id, sid, sizeof(sid))) {
+                    wait_for_pid_exit(game_pid);
+                    char sandbox_dir[PATH_MAX];
+                    snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sid);
+                    plugin_log("[Cleanup] Removing sandbox %s", sandbox_dir);
+                    if (cleanup_directory(sandbox_dir) == 0) {
+                        plugin_log("[Cleanup] Sandbox removed");
+                        printf_notification("Sandbox %s cleaned up     ", sid);
+                    } else {
+                        plugin_log("[Cleanup] Failed to remove sandbox: %s", strerror(errno));
+                    }
                 }
+                plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
+                sleep(RELAUNCH_COOLDOWN_SECONDS);
                 continue;
             }
 
