@@ -454,7 +454,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     } else if (strlen(sandbox_id) > 0) {
         usleep(100000);    
         plugin_log("[Cleanup] CUSA BC - sandbox %s cleaned up", sandbox_id);
-        printf_notification("Sandbox % cleaned up     ", title_id);
+        printf_notification("Sandbox %s cleaned up     ", title_id);
     }
 
     // ── 5. Cooldown anti quit+relaunch-trop-vite ──────────────────────────
