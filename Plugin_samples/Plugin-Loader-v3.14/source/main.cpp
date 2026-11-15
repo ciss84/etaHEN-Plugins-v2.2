@@ -329,12 +329,15 @@ static void inject_into_game(pid_t pid, const char *title_id,
     char sandbox_id[32] = {};
     char *fakelib_mount = nullptr;
 
+    // Resoudre le sandbox_id pour tous les jeux (CUSA + PPSA)
+    resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id));
+
     auto fakelib_cfg  = config.fakelib_enabled.find(std::string(title_id));
     bool fakelib_wanted = (strncmp(title_id, "PPSA", 4) == 0) &&
                           (fakelib_cfg != config.fakelib_enabled.end() ? fakelib_cfg->second
                                                                        : config.default_fakelib);
 
-    if (fakelib_wanted && resolve_sandbox_id(title_id, sandbox_id, sizeof(sandbox_id))) {
+    if (fakelib_wanted && strlen(sandbox_id) > 0) {
         char fakelib_check[PATH_MAX];
         snprintf(fakelib_check, sizeof(fakelib_check),
                  "/mnt/sandbox/%s/app0/fakelib", sandbox_id);
@@ -443,8 +446,18 @@ static void inject_into_game(pid_t pid, const char *title_id,
     plugin_log("[Wait] Waiting for game (pid %d) to exit...", pid);
     wait_for_pid_exit(pid);
 
-    if (fakelib_mount)
+    if (fakelib_mount) {
         cleanup_after_game(pid, sandbox_id, fakelib_mount);
+    } else if (strlen(sandbox_id) > 0) {
+        // Clean sandbox pour CUSA (sans fakelib)
+        char sandbox_dir[PATH_MAX];
+        snprintf(sandbox_dir, sizeof(sandbox_dir), "/mnt/sandbox/%s", sandbox_id);
+        plugin_log("[Cleanup] Removing sandbox %s", sandbox_dir);
+        if (cleanup_directory(sandbox_dir) == 0)
+            printf_notification("Sandbox %s cleaned up     ", sandbox_id);
+        else
+            plugin_log("[Cleanup] Failed: %s", strerror(errno));
+    }
 
     // ── 5. Cooldown anti quit+relaunch-trop-vite ──────────────────────────
     plugin_log("[Cooldown] Waiting %ds before accepting a relaunch...", RELAUNCH_COOLDOWN_SECONDS);
