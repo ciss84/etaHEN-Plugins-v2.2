@@ -461,12 +461,17 @@ static void inject_into_game(pid_t pid, const char *title_id,
         if (stat(sandbox_dir, &st_check) != 0) {
             plugin_log("[Cleanup] Sandbox deja supprime par le kernel (errno %d)", errno);
             printf_notification("Sandbox %s already gone     ", sandbox_id);
-        } else if (cleanup_directory(sandbox_dir) == 0) {
-            plugin_log("[Cleanup] Sandbox removed");
-            printf_notification("Sandbox %s cleaned up     ", sandbox_id);
         } else {
-            plugin_log("[Cleanup] Failed: %s", strerror(errno));
-            printf_notification("Sandbox %s clean failed     ", sandbox_id);
+            // Unmount d'abord comme la fakelib
+            unmount(sandbox_dir, MNT_FORCE);
+            usleep(200000);
+            if (cleanup_directory(sandbox_dir) == 0) {
+                plugin_log("[Cleanup] Sandbox removed");
+                printf_notification("Sandbox %s cleaned up     ", sandbox_id);
+            } else {
+                plugin_log("[Cleanup] Failed: %s", strerror(errno));
+                printf_notification("Sandbox %s clean failed     ", sandbox_id);
+            }
         }
     } else {
         plugin_log("[Cleanup] sandbox_id vide pour %s - resolve a echoue", title_id);
