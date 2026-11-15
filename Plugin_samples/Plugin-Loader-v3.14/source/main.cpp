@@ -244,8 +244,11 @@ static int cleanup_directory(const char *path)
         struct stat st;
         if (stat(full, &st) != 0) { result = -1; break; }
 
-        if (S_ISDIR(st.st_mode))
+        if (S_ISDIR(st.st_mode)) {
             if (cleanup_directory(full) != 0) { result = -1; break; }
+        } else {
+            if (unlink(full) != 0) { result = -1; break; }
+        }
     }
     closedir(d);
     if (result == 0) result = rmdir(path);
