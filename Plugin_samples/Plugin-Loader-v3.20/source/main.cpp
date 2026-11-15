@@ -452,6 +452,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
     if (fakelib_mount) {
         cleanup_after_game(pid, sandbox_id, fakelib_mount);
     } else if (strlen(sandbox_id) > 0) {
+        usleep(100000);    
         plugin_log("[Cleanup] CUSA BC - sandbox %s cleaned up", sandbox_id);
         printf_notification("Sandbox % cleaned up     ", title_id);
     }
