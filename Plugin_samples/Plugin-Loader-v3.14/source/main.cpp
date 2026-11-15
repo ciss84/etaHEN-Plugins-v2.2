@@ -389,7 +389,7 @@ static void inject_into_game(pid_t pid, const char *title_id,
         bool is_gta5 = (strcmp(title_id, "CUSA00411") == 0 ||
                 strcmp(title_id, "CUSA00419") == 0);
 
-        usleep(is_gta5 ? 250000 : 750000);
+        usleep(is_gta5 ? 300000 : 800000);
         
         for (const auto &prx : prx_list) {
             plugin_log("[PLT] Injecting: %s (delay: %d frames)", prx.path.c_str(), prx.frame_delay);
@@ -483,7 +483,7 @@ int main()
             if (!patch_shellcore_for_data()) {
                 plugin_log("[SC_PATCH] echec du patch SceShellCore, /data restera sandboxe");
             }
-            usleep(750000);
+            usleep(800000);
         }
     }
 
