@@ -1,0 +1,30 @@
+libhijacker/CMakeFiles/hijacker.dir/source/offsets.cpp.o: \
+  /home/runner/work/etaHEN-2.5/etaHEN-2.5/libhijacker/source/offsets.cpp \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/c++/v1/stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/c++/v1/__config \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/c++/v1/__config_site \
+  /usr/lib/llvm-22/lib/clang/22/include/stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/cdefs.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/_types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/_types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/_limits.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/_limits.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/_stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/_stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/endian.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/endian.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_pthreadtypes.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/select.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_sigset.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_timeval.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/timespec.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_timespec.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/sysctl.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/queue.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/c++/v1/stdio.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/stdio.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_null.h

@@ -182,7 +182,13 @@ payload_readuri(int fd, char* uri, size_t size) {
  **/
 static int
 payload_readhttp(int fd, char* uri, size_t size) {
+  const char *headers = ("HTTP/1.1 200 OK\r\n"
+			 "Content-Type: text/plain; charset=utf-8\r\n"
+			 "Access-Control-Allow-Origin: *\r\n"
+			 "Connection: close\r\n"
+			 "\r\n");
   char buf[PATH_MAX+255] = {0};
+  char* param_uri;
   ssize_t n;
   char* p;
 
@@ -203,9 +209,15 @@ payload_readhttp(int fd, char* uri, size_t size) {
   }
 
   *p = 0;
-  snprintf(uri, size, "file:/%s", buf+4);
 
-  write(fd, "HTTP/1.1 200 OK\r\n\r\n", 19);
+  if((param_uri=uri_get_param(buf+4, "uri"))) {
+    strncpy(uri, param_uri, size);
+    free(param_uri);
+  } else {
+    snprintf(uri, size, "file:/%s", buf+4);
+  }
+
+  write(fd, headers, strlen(headers));
 
   return 0;
 }
@@ -222,6 +234,7 @@ on_connection(int fd) {
   size_t len = 0;
   int optval = 1;
   char* args = "";
+  char* pipe = "";
   int magic = 0;
 
   if(setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval)) < 0) {
@@ -269,10 +282,21 @@ on_connection(int fd) {
     if(!(args=uri_get_param(uri, "args"))) {
       args = strdup("");
     }
+    if(!(pipe=uri_get_param(uri, "pipe"))) {
+      pipe = strdup("1");
+    }
+
+    if(!strcmp(pipe, "0") ||
+       !strcasecmp(pipe, "false") ||
+       !strcasecmp(pipe, "no")) {
+      fd = -1;
+    }
+
     if(payload_spawn(filename, args, fd, buf, len) < 0) {
       write(fd, "[elfldr.elf] Error spawning payload\n\r\0", 38);
     }
     free(filename);
+    free(pipe);
     free(args);
     free(buf);
   }

@@ -1,0 +1,2 @@
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ar qc ../lib/libNineS.a CMakeFiles/NineS.dir/src/elfldr.c.o CMakeFiles/NineS.dir/src/injector.c.o CMakeFiles/NineS.dir/src/main.c.o CMakeFiles/NineS.dir/src/notify.c.o CMakeFiles/NineS.dir/src/proc.c.o CMakeFiles/NineS.dir/src/pt.c.o CMakeFiles/NineS.dir/src/ucred.c.o
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ranlib ../lib/libNineS.a

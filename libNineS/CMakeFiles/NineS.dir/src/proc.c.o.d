@@ -1,0 +1,35 @@
+libNineS/CMakeFiles/NineS.dir/src/proc.c.o: \
+  /home/runner/work/etaHEN-2.5/etaHEN-2.5/libNineS/src/proc.c \
+  /home/runner/work/etaHEN-2.5/etaHEN-2.5/libNineS/src/../include/proc.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/cdefs.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/endian.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/endian.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/_types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/_types.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/_limits.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/_limits.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_pthreadtypes.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/select.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_sigset.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_timeval.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/timespec.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_timespec.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/stdlib.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/_null.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/stdio.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/string.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/strings.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/syscall.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/unistd.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/sys/unistd.h \
+  /home/runner/work/etaHEN-2.5/etaHEN-2.5/libNineS/src/../include/freebsd-helper.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/machine/_stdint.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/x86/_stdint.h \
+  /home/runner/work/etaHEN-2.5/etaHEN-2.5/libNineS/src/../include/sparse.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/ps5/payload.h \
+  /opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/target/include/ps5/kernel.h \
+  /home/runner/work/etaHEN-2.5/etaHEN-2.5/libNineS/src/../include/syscalls.h

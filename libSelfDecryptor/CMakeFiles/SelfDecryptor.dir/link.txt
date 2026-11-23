@@ -1,0 +1,2 @@
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ar qc ../lib/libSelfDecryptor.a CMakeFiles/SelfDecryptor.dir/source/authmgr.c.o CMakeFiles/SelfDecryptor.dir/source/main.c.o CMakeFiles/SelfDecryptor.dir/source/sbl.c.o CMakeFiles/SelfDecryptor.dir/source/selfpager.c.o
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ranlib ../lib/libSelfDecryptor.a

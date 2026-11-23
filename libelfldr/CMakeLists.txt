@@ -31,7 +31,9 @@ include_directories	(SYSTEM "${PS5_PAYLOAD_SDK}/include")
 
 set(D_SRC ${D_CWD}/src)
 
-file(GLOB SrcFiles ${D_SRC}/*.c ${D_SRC}../include/*.h)
+# Only elfldr.c — pt.c is excluded because NineS already includes pt.c
+# Linking both libelfldr.a and libNineS.a would cause duplicate pt_* symbols
+set(SrcFiles ${D_SRC}/elfldr.c)
 
 add_library(${PROJECT_NAME} STATIC ${SrcFiles})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}")

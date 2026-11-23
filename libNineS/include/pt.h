@@ -42,6 +42,7 @@ short pt_getshort(pid_t pid, intptr_t addr);
 int   pt_getint(pid_t pid, intptr_t addr);
 long  pt_getlong(pid_t pid, intptr_t addr);
 
+int pt_breakat(pid_t pid, intptr_t brkpoint);
 long pt_syscall(pid_t pid, int sysno, ...);
 intptr_t pt_resolve(pid_t pid, const char* nid);
 
@@ -64,8 +65,7 @@ int pt_rdup(pid_t pid, pid_t other_pid, int fd);
 int pt_pipe(pid_t pid, intptr_t pipefd);
 int pt_errno(pid_t pid);
 
-
-long pt_call(pid_t pid, intptr_t addr, ...);
-long pt_call2(pid_t pid, intptr_t addr, ...);
-
 intptr_t pt_sceKernelGetProcParam(pid_t pid);
+
+intptr_t pt_call(pid_t pid, intptr_t addr, ...);
+intptr_t pt_call2(pid_t pid, intptr_t addr, ...);

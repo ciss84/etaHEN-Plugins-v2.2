@@ -1,0 +1,2 @@
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ar qc ../lib/libhijacker.a CMakeFiles/hijacker.dir/source/backtrace.cpp.o CMakeFiles/hijacker.dir/source/dbg.cpp.o CMakeFiles/hijacker.dir/source/elf/elf.cpp.o CMakeFiles/hijacker.dir/source/hijacker.cpp.o CMakeFiles/hijacker.dir/source/kernel.cpp.o CMakeFiles/hijacker.dir/source/notify.cpp.o CMakeFiles/hijacker.dir/source/offsets.cpp.o CMakeFiles/hijacker.dir/source/spawner.cpp.o
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ranlib ../lib/libhijacker.a

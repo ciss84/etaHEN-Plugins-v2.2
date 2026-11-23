@@ -31,7 +31,7 @@
 #define LOG_ERROR(...)
 #endif
 
-// https://github.com/Cryptogenic/PS5-SELF-Decrypter/blob/def326f36c1f1b461030222daa9ea6124d4ce610/include/self.h#L21
+///// https://github.com/Cryptogenic/PS5-SELF-Decrypter/blob/def326f36c1f1b461030222daa9ea6124d4ce610/include/self.h#L21
 struct sce_self_header {
     uint32_t magic;         // 0x00
     uint8_t version;        // 0x04

@@ -12,7 +12,7 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program; see the file COPYING. If not, see
-<http://www.gnu.org/licenses/>.  */
+<http://www.gnu.org/licenses/>.  *///
 
 #include <elf.h>
 #include <fcntl.h>
@@ -35,9 +35,9 @@ along with this program; see the file COPYING. If not, see
 
 #include <ps5/kernel.h>
 
-#include "../include/elfldr.h"
-#include "../include/log.h"
-#include "../include/pt.h"
+#include "elfldr.h"
+#include "log.h"
+#include "pt.h"
 
 
 #ifndef IPV6_2292PKTOPTIONS
@@ -59,19 +59,26 @@ along with this program; see the file COPYING. If not, see
  * Context structure for the ELF loader.
  **/
 typedef struct elfldr_ctx {
-  uint8_t* elf;
-  pid_t    pid;
+  const uint8_t* elf;
+  pid_t pid;
 
   intptr_t base_addr;
   size_t   base_size;
   void*    base_mirror;
 } elfldr_ctx_t;
 
+
+/**
+ * Absolute path to the SceSpZeroConf eboot.
+ **/
+static const char* SceSpZeroConf = "/system/vsh/app/NPXS40112/eboot.bin";
+
+
 /**
 * Parse a R_X86_64_RELATIVE relocatable.
 **/
 static int
-r_relative(elfldr_ctx_t *ctx, Elf64_Rela* rela) {
+r_relative(elfldr_ctx_t *ctx, const Elf64_Rela* rela) {
   intptr_t* loc = ctx->base_mirror + rela->r_offset;
   intptr_t val = ctx->base_addr + rela->r_addend;
 
@@ -85,7 +92,7 @@ r_relative(elfldr_ctx_t *ctx, Elf64_Rela* rela) {
  * Parse a PT_LOAD program header.
  **/
 static int
-data_load(elfldr_ctx_t *ctx, Elf64_Phdr *phdr) {
+data_load(elfldr_ctx_t *ctx, const Elf64_Phdr *phdr) {
   void* data = ctx->base_mirror + phdr->p_vaddr;
 
   if(!phdr->p_memsz) {
@@ -102,15 +109,41 @@ data_load(elfldr_ctx_t *ctx, Elf64_Phdr *phdr) {
 }
 
 
+int
+elfldr_sanity_check(const uint8_t *elf, size_t elf_size) {
+  const Elf64_Ehdr *ehdr = (const Elf64_Ehdr*)elf;
+  const Elf64_Phdr *phdr;
+
+  if(elf_size < sizeof(Elf64_Ehdr) ||
+     elf_size < sizeof(Elf64_Phdr) + ehdr->e_phoff ||
+     elf_size < sizeof(Elf64_Shdr) + ehdr->e_shoff) {
+    return -1;
+  }
+
+  if(ehdr->e_ident[0] != 0x7f || ehdr->e_ident[1] != 'E' ||
+     ehdr->e_ident[2] != 'L'  || ehdr->e_ident[3] != 'F') {
+    return -1;
+  }
+
+  phdr = (const Elf64_Phdr*)(elf + ehdr->e_phoff);
+  for(int i=0; i<ehdr->e_phnum; i++) {
+    if(phdr[i].p_offset + phdr[i].p_filesz > elf_size) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
 
 /**
  * Load an ELF into the address space of a process with the given pid.
  **/
 intptr_t
-elfldr_load(pid_t pid, uint8_t *elf) {
-  Elf64_Ehdr *ehdr = (Elf64_Ehdr*)elf;
-  Elf64_Phdr *phdr = (Elf64_Phdr*)(elf + ehdr->e_phoff);
-  Elf64_Shdr *shdr = (Elf64_Shdr*)(elf + ehdr->e_shoff);
+elfldr_load(pid_t pid, const uint8_t *elf) {
+  const Elf64_Ehdr *ehdr = (const Elf64_Ehdr*)elf;
+  const Elf64_Phdr *phdr = (const Elf64_Phdr*)(elf + ehdr->e_phoff);
+  const Elf64_Shdr *shdr = (const Elf64_Shdr*)(elf + ehdr->e_shoff);
 
   elfldr_ctx_t ctx = {.elf = elf, .pid=pid};
 
@@ -174,7 +207,7 @@ elfldr_load(pid_t pid, uint8_t *elf) {
       continue;
     }
 
-    Elf64_Rela* rela = (Elf64_Rela*)(elf + shdr[i].sh_offset);
+    const Elf64_Rela* rela = (const Elf64_Rela*)(elf + shdr[i].sh_offset);
     for(int j=0; j<shdr[i].sh_size/sizeof(Elf64_Rela); j++) {
       switch(rela[j].r_info & 0xffffffffl) {
       case R_X86_64_RELATIVE:
@@ -200,6 +233,7 @@ elfldr_load(pid_t pid, uint8_t *elf) {
                          ROUND_PG(phdr[i].p_memsz),
                          PFLAGS(phdr[i].p_flags))) {
 	LOG_PERROR("kernel_mprotect");
+	error = 1;
       }
     } else {
       if(pt_mprotect(pid, ctx.base_addr + phdr[i].p_vaddr,
@@ -313,37 +347,470 @@ elfldr_payload_args(pid_t pid) {
 /**
  * Prepare registers of a process for execution of an ELF.
  **/
-// static int
-// elfldr_prepare_exec(pid_t pid, uint8_t *elf) {
-//   intptr_t entry;
-//   intptr_t args;
-//   struct reg r;
+static int
+elfldr_prepare_exec(pid_t pid, const uint8_t *elf) {
+  intptr_t entry;
+  intptr_t args;
+  struct reg r;
 
-//   if(pt_getregs(pid, &r)) {
-//     LOG_PERROR("pt_getregs");
-//     return -1;
-//   }
+  if(pt_getregs(pid, &r)) {
+    LOG_PERROR("pt_getregs");
+    return -1;
+  }
 
-//   if(!(entry=elfldr_load(pid, elf))) {
-//     LOG_PUTS("elfldr_load failed");
-//     return -1;
-//   }
+  if(!(entry=elfldr_load(pid, elf))) {
+    LOG_PUTS("elfldr_load failed");
+    return -1;
+  }
 
-//   if(!(args=elfldr_payload_args(pid))) {
-//     LOG_PUTS("elfldr_payload_args failed");
-//     return -1;
-//   }
+  if(!(args=elfldr_payload_args(pid))) {
+    LOG_PUTS("elfldr_payload_args failed");
+    return -1;
+  }
 
-//   pt_setlong(pid, r.r_rsp-8, r.r_rip);
-//   r.r_rsp -= 8;
-//   r.r_rip = entry;
-//   r.r_rdi = args;
+  pt_setlong(pid, r.r_rsp-8, r.r_rip);
+  r.r_rsp -= 8;
+  r.r_rip = entry;
+  r.r_rdi = args;
 
-//   if(pt_setregs(pid, &r)) {
-//     LOG_PERROR("pt_setregs");
-//     pt_detach(pid, SIGKILL);
-//     return -1;
-//   }
+  if(pt_setregs(pid, &r)) {
+    LOG_PERROR("pt_setregs");
+    return -1;
+  }
 
-//   return 0;
-// }
+  return 0;
+}
+
+
+/**
+ * Set the name of a process.
+ **/
+static int
+elfldr_set_procname(pid_t pid, const char* name) {
+  intptr_t buf;
+
+  if((buf=pt_mmap(pid, 0, PAGE_SIZE, PROT_READ | PROT_WRITE,
+		  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0)) == -1) {
+    LOG_PT_PERROR(pid, "pt_mmap");
+    return -1;
+  }
+
+  pt_copyin(pid, name, buf, strlen(name)+1);
+  pt_syscall(pid, SYS_thr_set_name, -1, buf);
+  pt_msync(pid, buf, PAGE_SIZE, MS_SYNC);
+  pt_munmap(pid, buf, PAGE_SIZE);
+
+  return 0;
+}
+
+
+/**
+ * Escape jail and raise privileges.
+ **/
+int
+elfldr_raise_privileges(pid_t pid) {
+  static const uint8_t caps[16] = {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
+				   0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff};
+  intptr_t vnode;
+
+  if(!(vnode=kernel_get_root_vnode())) {
+    return -1;
+  }
+  if(kernel_set_proc_rootdir(pid, vnode)) {
+    return -1;
+  }
+  if(kernel_set_proc_jaildir(pid, 0)) {
+    return -1;
+  }
+  if(kernel_set_ucred_uid(pid, 0)) {
+    return -1;
+  }
+  if(kernel_set_ucred_caps(pid, caps)) {
+    return -1;
+  }
+
+  return 0;
+}
+
+
+/**
+ * Execute an ELF inside the process with the given pid.
+ **/
+int
+elfldr_exec(pid_t pid, int stdio, const uint8_t* elf) {
+  uint8_t caps[16];
+  intptr_t jaildir;
+  intptr_t rootdir;
+  uint64_t authid;
+  int error = 0;
+
+  // backup privileges
+  jaildir = kernel_get_proc_jaildir(pid);
+  if(!(rootdir=kernel_get_proc_rootdir(pid))) {
+    LOG_PUTS("kernel_get_proc_rootdir failed");
+    pt_detach(pid, 0);
+    return -1;
+  }
+  if(kernel_get_ucred_caps(pid, caps)) {
+    LOG_PUTS("kernel_get_ucred_caps failed");
+    pt_detach(pid, 0);
+    return -1;
+  }
+  if(!(authid=kernel_get_ucred_authid(pid))) {
+    LOG_PUTS("kernel_get_ucred_authid failed");
+    pt_detach(pid, 0);
+    return -1;
+  }
+
+  if(elfldr_raise_privileges(pid)) {
+    LOG_PUTS("Unable to raise privileges");
+    pt_detach(pid, 0);
+    return -1;
+  }
+
+  if(stdio > 0) {
+    stdio = pt_rdup(pid, getpid(), stdio);
+
+    pt_close(pid, STDERR_FILENO);
+    pt_close(pid, STDOUT_FILENO);
+    pt_close(pid, STDIN_FILENO);
+
+    pt_dup2(pid, stdio, STDIN_FILENO);
+    pt_dup2(pid, stdio, STDOUT_FILENO);
+    pt_dup2(pid, stdio, STDERR_FILENO);
+
+    pt_close(pid, stdio);
+  }
+
+  if(elfldr_prepare_exec(pid, elf)) {
+    error = -1;
+  }
+
+  // restore privileges
+  if(kernel_set_proc_jaildir(pid, jaildir)) {
+    LOG_PUTS("kernel_set_proc_jaildir failed");
+    error = -1;
+  }
+  if(kernel_set_proc_rootdir(pid, rootdir)) {
+    LOG_PUTS("kernel_set_proc_rootdir failed");
+    error = -1;
+  }
+
+  if(kernel_set_ucred_caps(pid, caps)) {
+    LOG_PUTS("kernel_set_ucred_caps failed");
+    error = -1;
+  }
+  if(kernel_set_ucred_authid(pid, authid)) {
+    LOG_PUTS("kernel_set_ucred_authid failed");
+    error = -1;
+  }
+
+  if(pt_detach(pid, 0)) {
+    LOG_PERROR("pt_detach");
+    error = -1;
+  }
+
+  return error;
+}
+
+
+/**
+ * Set the heap size for libc.
+ **/
+static int
+elfldr_set_heap_size(pid_t pid, ssize_t size) {
+  intptr_t sceLibcHeapSize;
+  intptr_t sceLibcParam;
+  intptr_t sceProcParam;
+  intptr_t Need_sceLibc;
+
+  if(!(sceProcParam=pt_sceKernelGetProcParam(pid))) {
+    LOG_PT_PERROR(pid, "pt_sceKernelGetProcParam");
+    return -1;
+  }
+
+  if(pt_copyout(pid, sceProcParam+56, &sceLibcParam,
+		sizeof(sceLibcParam))) {
+    LOG_PERROR("pt_copyout");
+    return -1;
+  }
+
+  if(pt_copyout(pid, sceLibcParam+16, &sceLibcHeapSize,
+		sizeof(sceLibcHeapSize))) {
+    LOG_PERROR("pt_copyout");
+    return -1;
+  }
+
+  if(pt_setlong(pid, sceLibcHeapSize, size)) {
+    LOG_PERROR("pt_setlong");
+    return -1;
+  }
+
+  if(size != -1) {
+    return 0;
+  }
+
+  if(pt_copyout(pid, sceLibcParam+72, &Need_sceLibc,
+		sizeof(Need_sceLibc))) {
+    LOG_PERROR("pt_copyout");
+    return -1;
+  }
+
+  return pt_setlong(pid, sceLibcParam+32, Need_sceLibc);
+}
+
+
+static int
+sys_budget_set(long budget) {
+  return __syscall(0x23b, budget);
+}
+
+
+static int
+elfldr_rfork_entry(void* argv) {
+  if(sys_budget_set(0)) {
+    klog_perror("sys_budget_set");
+    return -1;
+  }
+  if(open("/dev/deci_stdin", O_RDONLY) < 0) {
+    klog_perror("open");
+    return -1;
+  }
+  if(open("/dev/deci_stdout", O_WRONLY) < 0) {
+    klog_perror("open");
+    return -1;
+  }
+  if(open("/dev/deci_stderr", O_WRONLY) < 0) {
+    klog_perror("open");
+    return -1;
+  }
+
+  if(ptrace(PT_TRACE_ME, 0, 0, 0)) {
+    klog_perror("ptrace");
+    return -1;
+  }
+
+  execve(SceSpZeroConf, argv, 0);
+  klog_perror("execve");
+  return -1;
+}
+
+
+/**
+ * Execute an ELF inside a new process.
+ **/
+pid_t
+elfldr_spawn(int stdio, char* const argv[], const uint8_t* elf, size_t payload_size) {
+  intptr_t libkernel_entry;
+  off_t need_reloc_offset;
+  intptr_t eboot_entry;
+  off_t main_offset;
+  struct kevent evt;
+  void *stack;
+  pid_t pid;
+  int kq;
+
+  if((kq=kqueue()) < 0) {
+    LOG_PERROR("kqueue");
+    return -1;
+  }
+
+  if(!(stack=malloc(PAGE_SIZE))) {
+    LOG_PERROR("malloc");
+    close(kq);
+    return -1;
+  }
+
+  if((pid=rfork_thread(RFPROC | RFCFDG | RFMEM, stack+PAGE_SIZE-8,
+		       elfldr_rfork_entry, (void*)argv)) < 0) {
+    LOG_PERROR("rfork_thread");
+    free(stack);
+    close(kq);
+    return -1;
+  }
+
+  EV_SET(&evt, pid, EVFILT_PROC, EV_ADD, NOTE_EXEC, 0, 0);
+  if(kevent(kq, &evt, 1, &evt, 1, 0) < 0) {
+    LOG_PERROR("kevent");
+    free(stack);
+    close(kq);
+    return -1;
+  }
+
+  if(waitpid(pid, 0, 0) < 0) {
+    LOG_PERROR("waitpid");
+    free(stack);
+    close(kq);
+    return -1;
+  }
+
+  free(stack);
+  close(kq);
+
+  // The proc is now in the STOP state, with the instruction pointer pointing
+  // at the libkernel entry.
+
+  if(!(libkernel_entry=kernel_dynlib_entry_addr(pid, 1))) {
+    LOG_PUTS("kernel_dynlib_entry_addr failed");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  if(!(eboot_entry=kernel_dynlib_entry_addr(pid, 0))) {
+    LOG_PUTS("kernel_dynlib_entry_addr failed");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  if(kernel_get_fw_version() < 0x14000000) {
+    need_reloc_offset = 15;
+    main_offset = 58;
+  } else {
+    need_reloc_offset = 15;
+    main_offset = 63;
+  }
+
+  // Continue execution until just after libkernel makes the syscall
+  // sys_dynlib_process_needed_and_relocate.
+  if(pt_breakat(pid, libkernel_entry + need_reloc_offset)) {
+    LOG_PERROR("pt_breakat");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  // Allow libc to allocate arbitrary amount of memory.
+  elfldr_set_heap_size(pid, -1);
+
+  // continue execution until just before main() is invoked.
+  if(pt_breakat(pid, eboot_entry + main_offset)) {
+    LOG_PERROR("pt_breakat");
+    pt_detach(pid, SIGKILL);
+    return -1;
+  }
+
+  // Execute the ELF
+  elfldr_set_procname(pid, argv[0]);
+  if(elfldr_exec(pid, stdio, elf)) {
+    kill(pid, SIGKILL);
+    return -1;
+  }
+
+  return pid;
+}
+
+
+/**
+ * Fint the pid of a process with the given name.
+ **/
+pid_t
+elfldr_find_pid(const char* name) {
+  int mib[4] = {1, 14, 8, 0};
+  pid_t mypid = getpid();
+  pid_t pid = -1;
+  size_t buf_size;
+  uint8_t *buf;
+
+  if(sysctl(mib, 4, 0, &buf_size, 0, 0)) {
+    LOG_PERROR("sysctl");
+    return -1;
+  }
+
+  if(!(buf=malloc(buf_size))) {
+    LOG_PERROR("malloc");
+    return -1;
+  }
+
+  if(sysctl(mib, 4, buf, &buf_size, 0, 0)) {
+    LOG_PERROR("sysctl");
+    free(buf);
+    return -1;
+  }
+
+  for(uint8_t *ptr=buf; ptr<(buf+buf_size);) {
+    int ki_structsize = *(int*)ptr;
+    pid_t ki_pid = *(pid_t*)&ptr[72];
+    char *ki_tdname = (char*)&ptr[447];
+
+    ptr += ki_structsize;
+    if(!strcmp(name, ki_tdname) && ki_pid != mypid) {
+      pid = ki_pid;
+    }
+  }
+
+  free(buf);
+
+  return pid;
+}
+
+
+/**
+ * Read an ELF from a given socket.
+ **/
+int
+elfldr_read(int fd, uint8_t** elf, size_t* elf_size) {
+  Elf64_Shdr *shdr;
+  Elf64_Ehdr ehdr;
+  uint8_t* buf;
+  uint8_t* bak;
+  size_t size;
+  off_t shend;
+  size_t rem;
+
+  if(recv(fd, &ehdr, sizeof(ehdr), MSG_WAITALL) != sizeof(ehdr)) {
+    return -1;
+  }
+
+  if(ehdr.e_ident[0] != 0x7f || ehdr.e_ident[1] != 'E' ||
+     ehdr.e_ident[2] != 'L'  || ehdr.e_ident[3] != 'F') {
+    errno = ENOEXEC;
+    return -1;
+  }
+
+  size = ehdr.e_shoff + ehdr.e_shnum * sizeof(Elf64_Ehdr);
+  if(!(buf=malloc(size))) {
+    return -1;
+  }
+
+  memcpy(buf, &ehdr, sizeof(ehdr));
+  rem = size - sizeof(ehdr);
+  if(recv(fd, buf + sizeof(ehdr), rem, MSG_WAITALL) != rem) {
+    free(buf);
+    return -1;
+  }
+
+  shend = 0;
+  shdr = (Elf64_Shdr*)(buf + ehdr.e_shoff);
+  for(int i=0; i<ehdr.e_shnum; i++) {
+    if(shdr[i].sh_type == SHT_NOBITS) {
+      continue;
+    }
+    size_t end = shdr[i].sh_offset + shdr[i].sh_size;
+    if(end > shend) {
+      shend = end;
+    }
+  }
+
+  // sections appear before section headers
+  if(shend <= size) {
+    *elf = buf;
+    *elf_size = size;
+    return 0;
+  }
+
+  bak = buf;
+  if(!(buf=realloc(buf, shend))) {
+    free(bak);
+    return -1;
+  }
+
+  rem = shend - size;
+  if(recv(fd, buf + size, rem, MSG_WAITALL) != rem) {
+    free(buf);
+    return -1;
+  }
+
+  *elf = buf;
+  *elf_size = shend;
+
+  return 0;
+}

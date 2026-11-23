@@ -1,0 +1,2 @@
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ar qc ../lib/libelfldr.a CMakeFiles/elfldr.dir/src/elfldr.c.o CMakeFiles/elfldr.dir/src/pt.c.o
+/opt/hostedtoolcache/ps5-payload-sdk/ps5-payload-sdk/toolchain/../bin/prospero-ranlib ../lib/libelfldr.a
